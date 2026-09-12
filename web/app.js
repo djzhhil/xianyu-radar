@@ -283,6 +283,8 @@ const pages = {
   events: { page: 1, pageSize: 50 },
   candidates: { page: 1, pageSize: 20 },
   catalog: { page: 1, pageSize: 50, sellerId: null, nickname: null },
+  history: { page: 1, pageSize: 50, itemId: "" },
+  scans: { page: 1, pageSize: 50 },
 };
 
 function renderPager(el, meta, onPage) {
@@ -346,7 +348,14 @@ async function openCatalog(sellerId, nickname, page = 1) {
         </td>
         <td class="price">${escapeHtml(formatPrice(it.price || it.last_price))}</td>
         <td><span class="badge ${escapeHtml(it.status || "")}">${escapeHtml(it.status || "—")}</span></td>
-        <td>${escapeHtml(shortTime(it.last_seen_at))}</td>`;
+        <td>${escapeHtml(shortTime(it.last_seen_at))}</td>
+        <td class="ops"></td>`;
+      const histBtn = document.createElement("button");
+      histBtn.type = "button";
+      histBtn.className = "ghost tiny";
+      histBtn.textContent = "历史";
+      histBtn.onclick = () => openItemHistory(it.item_id);
+      tr.querySelector(".ops").appendChild(histBtn);
       body.appendChild(tr);
     }
     renderPager($("#catalogPager"), data, (p) => openCatalog(sellerId, nickname, p));
@@ -540,6 +549,102 @@ async function refreshEvents(page) {
   renderPager($("#evtPager"), data, (p) => refreshEvents(p));
 }
 
+function switchTab(name) {
+  $$(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  $$(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${name}`));
+}
+
+function openItemHistory(itemId) {
+  pages.history.itemId = String(itemId || "");
+  pages.history.page = 1;
+  const input = $("#histItemId");
+  if (input) input.value = pages.history.itemId;
+  switchTab("history");
+  refreshHistory(1);
+}
+
+async function refreshHistory(page) {
+  if (page != null) pages.history.page = Math.max(1, page);
+  const input = $("#histItemId");
+  if (input) pages.history.itemId = String(input.value || "").trim();
+  const q = new URLSearchParams({
+    page: String(pages.history.page),
+    page_size: String(pages.history.pageSize),
+  });
+  if (pages.history.itemId) q.set("item_id", pages.history.itemId);
+  const data = await api(`/api/snapshots?${q}`);
+  pages.history.page = data.page || pages.history.page;
+  const hint = $("#histHint");
+  const body = $("#histBody");
+  body.innerHTML = "";
+  if (hint) {
+    hint.textContent = pages.history.itemId
+      ? `商品 ${pages.history.itemId} · 共 ${data.total || 0} 条快照`
+      : `最近扫描快照 · 共 ${data.total || 0} 条（可输入商品 ID 过滤）`;
+  }
+  if (!data.snapshots?.length) {
+    body.innerHTML = `<tr><td colspan="5" class="hint">暂无快照。扫描卖家后会写入价格/标题历史。</td></tr>`;
+    renderPager($("#histPager"), data, (p) => refreshHistory(p));
+    return;
+  }
+  for (const sn of data.snapshots) {
+    const href = itemUrl(sn.item_id, sn.url);
+    const title = sn.title || `(无标题 ${sn.item_id})`;
+    const nick = sn.seller_nickname || sn.seller_id || "—";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(shortTime(sn.captured_at))}</td>
+      <td class="seller-cell">
+        <div class="seller-nick">${escapeHtml(nick)}</div>
+        <div class="item-id"><code>${escapeHtml(sn.seller_id || "")}</code></div>
+      </td>
+      <td class="item-cell">
+        <a class="item-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>
+        <div class="item-id"><code>${escapeHtml(sn.item_id)}</code></div>
+      </td>
+      <td class="price">${escapeHtml(formatPrice(sn.price))}</td>
+      <td><code>${escapeHtml((sn.scan_id || "").slice(0, 16))}</code></td>`;
+    body.appendChild(tr);
+  }
+  renderPager($("#histPager"), data, (p) => refreshHistory(p));
+}
+
+async function refreshScans(page) {
+  if (page != null) pages.scans.page = Math.max(1, page);
+  const status = $("#scanStatus")?.value || "";
+  const q = new URLSearchParams({
+    page: String(pages.scans.page),
+    page_size: String(pages.scans.pageSize),
+  });
+  if (status) q.set("status", status);
+  const data = await api(`/api/scan?${q}`);
+  pages.scans.page = data.page || pages.scans.page;
+  const body = $("#scansBody");
+  body.innerHTML = "";
+  if (!data.scans?.length) {
+    body.innerHTML = `<tr><td colspan="7" class="hint">暂无扫描记录。</td></tr>`;
+    renderPager($("#scansPager"), data, (p) => refreshScans(p));
+    return;
+  }
+  for (const sc of data.scans) {
+    const nick = sc.seller_nickname || sc.seller_id || "—";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(shortTime(sc.started_at))}</td>
+      <td class="seller-cell">
+        <div class="seller-nick">${escapeHtml(nick)}</div>
+        <div class="item-id"><code>${escapeHtml(sc.seller_id || "")}</code></div>
+      </td>
+      <td><span class="badge ${escapeHtml(sc.status || "")}">${escapeHtml(sc.status || "—")}</span></td>
+      <td>${sc.item_count ?? "—"}</td>
+      <td>${sc.event_count ?? "—"}</td>
+      <td>${escapeHtml(sc.error_kind || "—")}</td>
+      <td><code>${escapeHtml(sc.scan_id || "")}</code></td>`;
+    body.appendChild(tr);
+  }
+  renderPager($("#scansPager"), data, (p) => refreshScans(p));
+}
+
 function escapeHtml(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -553,15 +658,16 @@ async function refreshAll() {
   await refreshPool();
   await refreshCandidates();
   await refreshEvents();
+  await refreshHistory();
+  await refreshScans();
 }
 
 function setupTabs() {
   $$(".tab").forEach((btn) => {
     btn.addEventListener("click", () => {
-      $$(".tab").forEach((b) => b.classList.remove("active"));
-      $$(".tab-panel").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      $(`#tab-${btn.dataset.tab}`).classList.add("active");
+      switchTab(btn.dataset.tab);
+      if (btn.dataset.tab === "history") refreshHistory();
+      if (btn.dataset.tab === "scans") refreshScans();
     });
   });
 }
@@ -665,6 +771,39 @@ function setupForms() {
   }
   const closeCat = $("#btnCloseCatalog");
   if (closeCat) closeCat.addEventListener("click", () => closeCatalog());
+
+  const histForm = $("#historyForm");
+  if (histForm) {
+    histForm.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      pages.history.page = 1;
+      refreshHistory(1).catch((e) => toast(e.message));
+    });
+  }
+  const histClear = $("#btnHistClear");
+  if (histClear) {
+    histClear.addEventListener("click", () => {
+      pages.history.itemId = "";
+      pages.history.page = 1;
+      if ($("#histItemId")) $("#histItemId").value = "";
+      refreshHistory(1).catch((e) => toast(e.message));
+    });
+  }
+  const scanStatus = $("#scanStatus");
+  if (scanStatus) {
+    scanStatus.addEventListener("change", () => {
+      pages.scans.page = 1;
+      refreshScans(1).catch((e) => toast(e.message));
+    });
+  }
+  const scanSize = $("#scanPageSize");
+  if (scanSize) {
+    scanSize.addEventListener("change", () => {
+      pages.scans.pageSize = Number(scanSize.value) || 50;
+      pages.scans.page = 1;
+      refreshScans(1).catch((e) => toast(e.message));
+    });
+  }
 
   $("#btnSaveSession").addEventListener("click", async () => {
     try {

@@ -17,6 +17,8 @@ data/debug/
 *.log
 radar-serve.log
 radar.pid
+radar-run.pid
+radar-run.log
 
 # Upstream clones used only as local research material (do not publish)
 _research/

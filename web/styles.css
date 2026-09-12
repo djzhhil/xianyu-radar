@@ -385,6 +385,17 @@ td code { font-size: 0.8rem; color: #f0d2b0; }
   transform: none;
 }
 
+.row-form.compact {
+  flex: 1 1 auto;
+  margin: 0;
+}
+.row-form.compact input[type="text"] {
+  flex: 1 1 14rem;
+  min-width: 10rem;
+}
+.badge.ok { color: #b7ebc9; }
+.badge.failed { color: #f0c2ba; }
+
 .catalog-panel {
   margin-top: 1.1rem;
   padding-top: 1rem;

@@ -31,7 +31,7 @@ Online path (requires real cookie):
 5. `radar scan-pool`  # first pass = baseline
 6. Wait / run again → NEW_ITEM may enter candidates
 7. `radar candidates --since 24h`
-8. Long run: `radar run --interval 90 --jitter 30`
+8. Long run: `radar run --interval 7200 --jitter 600`
 
 ## Known limits
 

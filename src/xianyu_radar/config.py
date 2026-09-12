@@ -23,9 +23,11 @@ RADAR_ENV = _normalize_env(None)
 MTOP_APP_KEY = "34839810"
 MTOP_BASE = "https://h5api.m.goofish.com/h5"
 
-# Scheduler defaults (prefer stability over speed)
-DEFAULT_SELLER_SCAN_INTERVAL_SEC = 90
-DEFAULT_JITTER_SEC = 30
+# Scheduler defaults (prefer stability over speed; ~2h between pool rounds)
+DEFAULT_SELLER_SCAN_INTERVAL_SEC = float(
+    os.environ.get("RADAR_SCAN_INTERVAL_SEC") or "7200"
+)
+DEFAULT_JITTER_SEC = float(os.environ.get("RADAR_SCAN_JITTER_SEC") or "600")
 DEFAULT_DISCOVERY_INTERVAL_SEC = 3600
 MAX_CONSECUTIVE_FAILURES = 5
 # Minimum gap between MTOP calls when not using broker quotas

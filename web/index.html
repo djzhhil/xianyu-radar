@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/styles.css?v=0.1.1" />
+  <link rel="stylesheet" href="/assets/styles.css?v=0.1.2" />
 </head>
 <body>
   <div class="atmosphere" aria-hidden="true"></div>
@@ -70,6 +70,8 @@
       <button class="tab" data-tab="pool">商家池</button>
       <button class="tab" data-tab="candidates">候选</button>
       <button class="tab" data-tab="events">事件</button>
+      <button class="tab" data-tab="history">价格历史</button>
+      <button class="tab" data-tab="scans">扫描日志</button>
       <button class="tab" data-tab="auth">登录态（高级）</button>
     </nav>
 
@@ -123,7 +125,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>商品</th><th>价格</th><th>状态</th><th>最近见到（上海）</th></tr>
+              <tr><th>商品</th><th>价格</th><th>状态</th><th>最近见到（上海）</th><th></th></tr>
             </thead>
             <tbody id="catalogBody"></tbody>
           </table>
@@ -176,6 +178,66 @@
       <div class="pager" id="evtPager"></div>
     </section>
 
+    <section class="panel tab-panel" id="tab-history">
+      <div class="panel-head">
+        <h2>价格 / 标题历史</h2>
+        <form id="historyForm" class="row-form compact">
+          <input id="histItemId" name="item_id" type="text" placeholder="商品 ID（可空=最近快照）" />
+          <button type="submit">查询</button>
+          <button type="button" class="ghost" id="btnHistClear">清空</button>
+        </form>
+      </div>
+      <p class="hint" id="histHint">来自每次扫描写入的快照。在商家「在售」里点「历史」可直达某商品。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>时间（上海）</th>
+              <th>卖家</th>
+              <th>商品</th>
+              <th>价格</th>
+              <th>scan</th>
+            </tr>
+          </thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+      <div class="pager" id="histPager"></div>
+    </section>
+
+    <section class="panel tab-panel" id="tab-scans">
+      <div class="panel-head">
+        <h2>扫描日志</h2>
+        <select id="scanStatus">
+          <option value="">全部状态</option>
+          <option value="ok">ok</option>
+          <option value="failed">failed</option>
+        </select>
+        <select id="scanPageSize" title="每页条数">
+          <option value="20">20 / 页</option>
+          <option value="50" selected>50 / 页</option>
+          <option value="100">100 / 页</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>开始（上海）</th>
+              <th>卖家</th>
+              <th>状态</th>
+              <th>商品数</th>
+              <th>事件数</th>
+              <th>错误</th>
+              <th>scan_id</th>
+            </tr>
+          </thead>
+          <tbody id="scansBody"></tbody>
+        </table>
+      </div>
+      <div class="pager" id="scansPager"></div>
+    </section>
+
     <section class="panel tab-panel" id="tab-auth">
       <h2>登录态（高级）</h2>
       <p class="hint">与上方「粘贴 Cookie」写入同一文件。此处适合粘贴完整 Asher / 扩展导出的 JSON 快照。</p>
@@ -195,6 +257,6 @@
   </footer>
 
   <div class="toast" id="toast" hidden></div>
-  <script src="/assets/app.js?v=0.1.1"></script>
+  <script src="/assets/app.js?v=0.1.2"></script>
 </body>
 </html>

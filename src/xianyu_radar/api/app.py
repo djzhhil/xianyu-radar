@@ -17,6 +17,7 @@ from xianyu_radar.api.routes import (
     discover,
     env,
     events,
+    history,
     pool,
     scan,
     status,
@@ -51,6 +52,7 @@ def create_app(radar_env: str | None = None) -> FastAPI:
     app.include_router(discover.router, prefix="/api/discover", tags=["discover"])
     app.include_router(pool.router, prefix="/api/pool", tags=["pool"])
     app.include_router(scan.router, prefix="/api/scan", tags=["scan"])
+    app.include_router(history.router, prefix="/api/snapshots", tags=["snapshots"])
     app.include_router(candidates.router, prefix="/api/candidates", tags=["candidates"])
     app.include_router(events.router, prefix="/api/events", tags=["events"])
     app.include_router(demo.router, prefix="/api/demo", tags=["demo"])

@@ -76,6 +76,7 @@ def apply_scan_result(
         conn.commit()
         return {
             "scan_id": scan_id,
+            "seller_id": seller_id,
             "status": "failed",
             "error_kind": "empty",
             "events": [],
@@ -109,6 +110,7 @@ def apply_scan_result(
     conn.commit()
     return {
         "scan_id": scan_id,
+        "seller_id": seller_id,
         "status": "ok",
         "item_count": len(current),
         "events": events,
@@ -136,7 +138,13 @@ def scan_seller(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('auth_paused', '1')"
         )
         conn.commit()
-        return {"scan_id": scan_id, "status": "failed", "error_kind": "auth", "error": str(e)}
+        return {
+            "scan_id": scan_id,
+            "seller_id": seller_id,
+            "status": "failed",
+            "error_kind": "auth",
+            "error": str(e),
+        }
     except MtopError as e:
         kind = "rate_limit" if ("VALIDATE" in str(e) or "rate limited" in str(e).lower()) else "network"
         conn.execute(
@@ -156,12 +164,19 @@ def scan_seller(
             conn.commit()
             return {
                 "scan_id": scan_id,
+                "seller_id": seller_id,
                 "status": "failed",
                 "error_kind": "auth",
                 "error": str(e),
             }
         conn.commit()
-        return {"scan_id": scan_id, "status": "failed", "error_kind": kind, "error": str(e)}
+        return {
+            "scan_id": scan_id,
+            "seller_id": seller_id,
+            "status": "failed",
+            "error_kind": kind,
+            "error": str(e),
+        }
 
     # attach keyword hints from pool if not provided
     if keyword_hints is None:

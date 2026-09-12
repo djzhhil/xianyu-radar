@@ -119,3 +119,23 @@ def test_env_switch(client: TestClient) -> None:
     assert r2.status_code == 200
     assert r2.json()["env"] == "demo"
     assert client.get("/api/status").json()["env"] == "demo"
+
+
+def test_snapshots_and_scans_list(client: TestClient) -> None:
+    r = client.post("/api/demo/offline-loop", json={"keyword": "Sony A7M4", "seller_id": "DEMO"})
+    assert r.status_code == 200, r.text
+    assert client.post("/api/env", json={"env": "demo"}).status_code == 200
+
+    snaps = client.get("/api/snapshots?page=1&page_size=5").json()
+    assert snaps["total"] >= 1
+    assert snaps["page"] == 1
+    assert len(snaps["snapshots"]) >= 1
+    item_id = snaps["snapshots"][0]["item_id"]
+    one = client.get(f"/api/snapshots/items/{item_id}").json()
+    assert one["count"] >= 1
+    assert one["item"]["item_id"] == item_id
+
+    scans = client.get("/api/scan?page=1&page_size=5").json()
+    assert scans["total"] >= 1
+    assert len(scans["scans"]) >= 1
+    assert "scan_id" in scans["scans"][0]

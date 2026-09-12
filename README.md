@@ -100,8 +100,8 @@ radar scan-pool
 radar candidates --since 24h
 radar events --since 24h
 
-# 5) 长期轮询（慢速 + 抖动）
-radar run --interval 90 --jitter 30
+# 5) 长期轮询（默认约 2 小时一轮 + 抖动，降低风控）
+radar run --interval 7200 --jitter 600
 ```
 
 离线/夹具：`scripts/mvp_smoke.md`

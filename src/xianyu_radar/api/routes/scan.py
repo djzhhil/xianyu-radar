@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from xianyu_radar.api.deps import event_to_dict, get_db, require_session
+from xianyu_radar.api.deps import clamp_page, event_to_dict, get_db, page_meta, require_session
 from xianyu_radar.config import ROOT_DIR
 from xianyu_radar.models import SellerItem
 from xianyu_radar.scheduler.runner import is_auth_paused, run_pool_once
@@ -17,6 +17,55 @@ from xianyu_radar.sellers.fetcher import get_seller_items_from_payload
 from xianyu_radar.sellers.monitor import apply_scan_result, scan_seller
 
 router = APIRouter()
+
+
+@router.get("")
+def list_scans(
+    seller: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Paginated scan run log."""
+    page, page_size, offset = clamp_page(page, page_size, max_size=200, default_size=50)
+    where = " WHERE 1=1"
+    params: list = []
+    if seller:
+        where += " AND sc.seller_id=?"
+        params.append(seller.strip())
+    if status:
+        where += " AND sc.status=?"
+        params.append(status.strip())
+
+    total = conn.execute(
+        f"SELECT COUNT(*) AS c FROM scans sc{where}",
+        params,
+    ).fetchone()["c"]
+
+    sql = f"""
+        SELECT
+            sc.id AS scan_id,
+            sc.seller_id,
+            sc.started_at,
+            sc.finished_at,
+            sc.status,
+            sc.error_kind,
+            sc.item_count,
+            sc.event_count,
+            COALESCE(s.nickname, '') AS seller_nickname
+        FROM scans sc
+        LEFT JOIN sellers s ON s.seller_id = sc.seller_id
+        {where}
+        ORDER BY sc.started_at DESC
+        LIMIT ? OFFSET ?
+    """
+    rows = [
+        dict(r)
+        for r in conn.execute(sql, [*params, page_size, offset]).fetchall()
+    ]
+    meta = page_meta(total, page, page_size)
+    return {"count": len(rows), "scans": rows, **meta}
 
 
 class ScanSellerBody(BaseModel):

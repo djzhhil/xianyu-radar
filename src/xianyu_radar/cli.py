@@ -12,7 +12,11 @@ from xianyu_radar import __version__
 from xianyu_radar import config as cfg
 from xianyu_radar.auth.session import AuthError, load_session
 from xianyu_radar.candidates.detector import list_candidates
-from xianyu_radar.config import ensure_data_dirs
+from xianyu_radar.config import (
+    DEFAULT_JITTER_SEC,
+    DEFAULT_SELLER_SCAN_INTERVAL_SEC,
+    ensure_data_dirs,
+)
 from xianyu_radar.discovery.keyword_search import search, search_from_fixture
 from xianyu_radar.discovery.seller_discovery import discover_sellers
 from xianyu_radar.scheduler.runner import clear_auth_paused, is_auth_paused, run_loop, run_pool_once
@@ -261,6 +265,9 @@ def cmd_events(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    from xianyu_radar.config import apply_env
+
+    apply_env(getattr(args, "env", None) or None)
     conn = _conn()
     try:
         session = load_session(args.state)
@@ -268,8 +275,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"AUTH_FAIL: {e}")
         return 1
     print(
-        f"scheduler start interval={args.interval}s jitter={args.jitter}s "
-        f"auth_paused={is_auth_paused(conn)}"
+        f"scheduler start env={cfg.RADAR_ENV} interval={args.interval}s "
+        f"jitter={args.jitter}s auth_paused={is_auth_paused(conn)}"
     )
     try:
         run_loop(
@@ -280,7 +287,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             max_rounds=args.max_rounds,
             on_result=lambda r: print(
                 f"[{datetime.now().isoformat(timespec='seconds')}] "
-                f"status={r.get('status')} events={len(r.get('events') or [])}"
+                f"seller={r.get('seller_id')} status={r.get('status')} "
+                f"events={len(r.get('events') or [])}"
             ),
         )
     except KeyboardInterrupt:
@@ -369,8 +377,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("run", help="Scheduler loop over seller pool")
     p.add_argument("--state", default=None)
-    p.add_argument("--interval", type=float, default=90)
-    p.add_argument("--jitter", type=float, default=30)
+    p.add_argument("--env", default=None, help="prod | demo (default: RADAR_ENV / prod)")
+    p.add_argument(
+        "--interval",
+        type=float,
+        default=DEFAULT_SELLER_SCAN_INTERVAL_SEC,
+        help="Seconds between full pool rounds (default 7200 ≈ 2h)",
+    )
+    p.add_argument(
+        "--jitter",
+        type=float,
+        default=DEFAULT_JITTER_SEC,
+        help="Extra random sleep 0..jitter seconds after each round (default 600)",
+    )
     p.add_argument("--max-rounds", type=int, default=None)
     p.set_defaults(func=cmd_run)
 
