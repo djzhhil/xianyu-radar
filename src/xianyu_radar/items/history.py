@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
 
 from xianyu_radar.models import SellerItem
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from xianyu_radar.timeutil import now_iso as _now
 
 
 def write_snapshots(

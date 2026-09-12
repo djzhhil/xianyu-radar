@@ -369,6 +369,22 @@ td code { font-size: 0.8rem; color: #f0d2b0; }
 .ops { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .hint { color: var(--mist); font-size: 0.88rem; margin: 0.35rem 0; }
 
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+  color: var(--mist);
+  font-size: 0.85rem;
+}
+.pager-info { flex: 1 1 auto; }
+.pager button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .catalog-panel {
   margin-top: 1.1rem;
   padding-top: 1rem;

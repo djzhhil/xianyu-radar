@@ -37,7 +37,7 @@ def run_pool_once(
 ) -> list[dict]:
     if is_auth_paused(conn):
         return [{"status": "skipped", "error_kind": "auth_paused"}]
-    sellers = list_pool(conn, status="watching")
+    sellers, _total = list_pool(conn, status="watching")
     results = []
     for idx, s in enumerate(sellers):
         # skip unknown placeholders

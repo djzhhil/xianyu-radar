@@ -7,7 +7,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from xianyu_radar.api.deps import get_db, parse_since
+from xianyu_radar.api.deps import clamp_page, get_db, page_meta, parse_since
 from xianyu_radar.candidates.detector import list_candidates
 
 router = APIRouter()
@@ -20,11 +20,20 @@ class CandidateStatusBody(BaseModel):
 @router.get("")
 def get_candidates(
     since: str = "24h",
-    limit: int = 50,
+    page: int = 1,
+    page_size: int = 20,
+    limit: int | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    rows = list_candidates(conn, since_iso=parse_since(since), limit=limit)
-    return {"count": len(rows), "since": since, "candidates": rows}
+    if limit is not None and page == 1:
+        page_size = limit
+    page, page_size, offset = clamp_page(page, page_size, max_size=100, default_size=20)
+    since_iso = parse_since(since) if since else None
+    rows, total = list_candidates(
+        conn, since_iso=since_iso, limit=page_size, offset=offset
+    )
+    meta = page_meta(total, page, page_size)
+    return {"count": len(rows), "since": since, "candidates": rows, **meta}
 
 
 @router.patch("/{candidate_id}")

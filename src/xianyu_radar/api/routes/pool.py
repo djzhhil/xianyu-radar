@@ -7,7 +7,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from xianyu_radar.api.deps import get_db
+from xianyu_radar.api.deps import get_db, clamp_page, page_meta
 from xianyu_radar.sellers.pool import (
     add_seller_from_discovery,
     list_pool,
@@ -32,10 +32,19 @@ class AddSellerBody(BaseModel):
 @router.get("")
 def get_pool(
     all: bool = False,
+    page: int = 1,
+    page_size: int = 20,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    rows = list_pool(conn, status=None if all else "watching")
-    return {"count": len(rows), "sellers": rows}
+    page, page_size, offset = clamp_page(page, page_size, max_size=100, default_size=20)
+    rows, total = list_pool(
+        conn,
+        status=None if all else "watching",
+        limit=page_size,
+        offset=offset,
+    )
+    meta = page_meta(total, page, page_size)
+    return {"count": len(rows), "sellers": rows, **meta}
 
 
 @router.post("")
@@ -79,22 +88,29 @@ def cleanup_unknown(conn: sqlite3.Connection = Depends(get_db)) -> dict:
 def get_seller_items(
     seller_id: str,
     all: bool = False,
-    limit: int = 200,
+    page: int = 1,
+    page_size: int = 50,
+    limit: int | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     """Catalog of what this seller is selling (from last scans / discovery)."""
+    if limit is not None and page == 1:
+        page_size = limit
+    page, page_size, offset = clamp_page(page, page_size, max_size=200, default_size=50)
     row = conn.execute(
         "SELECT seller_id, nickname, status, last_scan_at FROM sellers WHERE seller_id=?",
         (seller_id,),
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="seller not found")
-    items = list_seller_items(
+    items, total = list_seller_items(
         conn,
         seller_id,
         status=None if all else "active",
-        limit=limit,
+        limit=page_size,
+        offset=offset,
     )
+    meta = page_meta(total, page, page_size)
     return {
         "seller_id": seller_id,
         "nickname": row["nickname"],
@@ -102,6 +118,7 @@ def get_seller_items(
         "last_scan_at": row["last_scan_at"],
         "count": len(items),
         "items": items,
+        **meta,
     }
 
 

@@ -56,10 +56,26 @@ def test_offline_demo_loop_and_candidates(client: TestClient) -> None:
 
     cands = client.get("/api/candidates?since=24h").json()
     assert cands["count"] >= 1
+    assert cands["page"] == 1
+    assert "total" in cands and "pages" in cands
     assert any("Photoshop" in (c.get("sample_title") or "") for c in cands["candidates"])
 
     events = client.get("/api/events?since=24h").json()
     assert events["count"] >= 1
+    assert events["page"] == 1
+    assert events["total"] >= events["count"]
+
+    pool = client.get("/api/pool?page=1&page_size=1").json()
+    assert pool["page"] == 1
+    assert pool["page_size"] == 1
+    assert pool["total"] >= 1
+    assert len(pool["sellers"]) == 1
+    sid = pool["sellers"][0]["seller_id"]
+    items = client.get(f"/api/pool/{sid}/items?page=1&page_size=1").json()
+    assert items["page"] == 1
+    assert items["page_size"] == 1
+    assert items["total"] >= 1
+    assert len(items["items"]) == 1
 
 
 def test_discover_fixture(client: TestClient) -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from datetime import datetime, timezone
 
 from xianyu_radar.auth.mtop import MtopError
 from xianyu_radar.auth.session import AuthError, Session
@@ -15,10 +14,7 @@ from xianyu_radar.items.history import write_snapshots
 from xianyu_radar.items.repository import load_active_items, mark_removed, upsert_seller_item
 from xianyu_radar.models import ItemEvent, SellerItem
 from xianyu_radar.sellers.fetcher import get_seller_items
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from xianyu_radar.timeutil import now_iso as _now
 
 
 def _write_events(conn: sqlite3.Connection, events: list[ItemEvent], scan_id: str) -> None:

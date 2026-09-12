@@ -41,7 +41,7 @@ def test_pool_dedupe(tmp_path: Path) -> None:
     conn.commit()
     assert c1 is True
     assert c2 is False
-    rows = list_pool(conn)
+    rows, _total = list_pool(conn)
     assert len(rows) == 1
     entries = conn.execute("SELECT source_keyword FROM seller_pool_entries").fetchall()
     assert {e["source_keyword"] for e in entries} == {"k1", "k2"}

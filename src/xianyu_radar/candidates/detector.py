@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime, timezone
 
 from xianyu_radar.models import ItemEvent, SellerItem
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from xianyu_radar.timeutil import now_iso as _now
 
 
 def normalize_title(title: str) -> str:
@@ -115,17 +111,25 @@ def list_candidates(
     *,
     since_iso: str | None = None,
     limit: int = 50,
-) -> list[dict]:
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    offset = max(offset, 0)
+    limit = min(max(limit, 1), 200)
     if since_iso:
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM candidates WHERE last_seen_at >= ?",
+            (since_iso,),
+        ).fetchone()["c"]
         rows = conn.execute(
             "SELECT * FROM candidates WHERE last_seen_at >= ? "
-            "ORDER BY score DESC, last_seen_at DESC LIMIT ?",
-            (since_iso, limit),
+            "ORDER BY score DESC, last_seen_at DESC LIMIT ? OFFSET ?",
+            (since_iso, limit, offset),
         ).fetchall()
     else:
+        total = conn.execute("SELECT COUNT(*) AS c FROM candidates").fetchone()["c"]
         rows = conn.execute(
-            "SELECT * FROM candidates ORDER BY score DESC, last_seen_at DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM candidates ORDER BY score DESC, last_seen_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
         ).fetchall()
     out = []
     for r in rows:
@@ -136,4 +140,4 @@ def list_candidates(
         ).fetchall()
         d["source_sellers"] = [s["seller_id"] for s in sellers]
         out.append(d)
-    return out
+    return out, total

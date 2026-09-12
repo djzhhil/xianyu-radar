@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
 from xianyu_radar import __version__
@@ -20,6 +20,7 @@ from xianyu_radar.sellers.fetcher import get_seller_items, get_seller_items_from
 from xianyu_radar.sellers.monitor import apply_scan_result, scan_seller
 from xianyu_radar.sellers.pool import list_pool, set_seller_status
 from xianyu_radar.storage.db import get_schema_version, init_db, table_names
+from xianyu_radar.timeutil import parse_relative_since
 
 
 def _conn():
@@ -129,7 +130,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
 
 def cmd_pool_list(args: argparse.Namespace) -> int:
     conn = _conn()
-    rows = list_pool(conn, status=None if args.all else "watching")
+    rows, _total = list_pool(conn, status=None if args.all else "watching")
     conn.close()
     for r in rows:
         print(
@@ -222,18 +223,8 @@ def cmd_scan_pool(args: argparse.Namespace) -> int:
 
 def cmd_candidates(args: argparse.Namespace) -> int:
     conn = _conn()
-    since = None
-    if args.since:
-        # support 24h / 7d / ISO
-        s = args.since.strip().lower()
-        now = datetime.now(timezone.utc)
-        if s.endswith("h") and s[:-1].isdigit():
-            since = (now - timedelta(hours=int(s[:-1]))).strftime("%Y-%m-%dT%H:%M:%SZ")
-        elif s.endswith("d") and s[:-1].isdigit():
-            since = (now - timedelta(days=int(s[:-1]))).strftime("%Y-%m-%dT%H:%M:%SZ")
-        else:
-            since = args.since
-    rows = list_candidates(conn, since_iso=since, limit=args.limit)
+    since = parse_relative_since(args.since) if args.since else None
+    rows, _total = list_candidates(conn, since_iso=since, limit=args.limit)
     conn.close()
     for r in rows:
         sellers = ",".join(r.get("source_sellers") or [])
@@ -253,12 +244,7 @@ def cmd_events(args: argparse.Namespace) -> int:
         sql += " AND seller_id=?"
         params.append(args.seller)
     if args.since:
-        s = args.since.strip().lower()
-        now = datetime.now(timezone.utc)
-        if s.endswith("h") and s[:-1].isdigit():
-            since = (now - timedelta(hours=int(s[:-1]))).strftime("%Y-%m-%dT%H:%M:%SZ")
-        else:
-            since = args.since
+        since = parse_relative_since(args.since) or args.since
         sql += " AND detected_at>=?"
         params.append(since)
     sql += " ORDER BY detected_at DESC LIMIT ?"

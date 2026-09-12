@@ -6,7 +6,7 @@ import sqlite3
 
 from fastapi import APIRouter, Depends
 
-from xianyu_radar.api.deps import get_db, parse_since
+from xianyu_radar.api.deps import clamp_page, get_db, page_meta, parse_since
 
 router = APIRouter()
 
@@ -15,11 +15,33 @@ router = APIRouter()
 def get_events(
     since: str = "24h",
     seller: str | None = None,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 50,
+    limit: int | None = None,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     """List events joined with item title/price/url and seller nickname."""
-    sql = """
+    # Backward compatible: bare ``limit`` maps to page_size on page 1.
+    if limit is not None and page == 1:
+        page_size = limit
+    page, page_size, offset = clamp_page(page, page_size, max_size=200, default_size=50)
+
+    where = " WHERE 1=1"
+    params: list = []
+    since_iso = parse_since(since)
+    if since_iso:
+        where += " AND e.detected_at>=?"
+        params.append(since_iso)
+    if seller:
+        where += " AND e.seller_id=?"
+        params.append(seller)
+
+    total = conn.execute(
+        f"SELECT COUNT(*) AS c FROM item_events e{where}",
+        params,
+    ).fetchone()["c"]
+
+    sql = f"""
         SELECT
             e.id,
             e.item_id,
@@ -38,21 +60,22 @@ def get_events(
         FROM item_events e
         LEFT JOIN items i ON i.item_id = e.item_id
         LEFT JOIN sellers s ON s.seller_id = e.seller_id
-        WHERE 1=1
+        {where}
+        ORDER BY e.detected_at DESC
+        LIMIT ? OFFSET ?
     """
-    params: list = []
-    since_iso = parse_since(since)
-    if since_iso:
-        sql += " AND e.detected_at>=?"
-        params.append(since_iso)
-    if seller:
-        sql += " AND e.seller_id=?"
-        params.append(seller)
-    sql += " ORDER BY e.detected_at DESC LIMIT ?"
-    params.append(min(max(limit, 1), 500))
-    rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    rows = [
+        dict(r)
+        for r in conn.execute(sql, [*params, page_size, offset]).fetchall()
+    ]
     for row in rows:
         row["is_baseline"] = bool(row.get("is_baseline"))
         if not row.get("url") and row.get("item_id"):
             row["url"] = f"https://www.goofish.com/item?id={row['item_id']}"
-    return {"count": len(rows), "since": since, "events": rows}
+    meta = page_meta(total, page, page_size)
+    return {
+        "count": len(rows),
+        "since": since,
+        "events": rows,
+        **meta,
+    }

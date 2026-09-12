@@ -238,10 +238,34 @@ function formatPrice(p) {
   return /¥|￥/.test(s) ? s : `¥${s}`;
 }
 
+const SH_TZ = "Asia/Shanghai";
+const shFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SH_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/** Format timestamps for display in Asia/Shanghai (DB may be UTC Z or +08:00). */
 function shortTime(iso) {
   if (!iso) return "—";
-  const s = String(iso);
-  return s.length > 19 ? s.slice(0, 19).replace("T", " ") : s.replace("T", " ");
+  let s = String(iso).trim();
+  // Legacy naive UTC strings → treat as UTC
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) {
+    s = s.replace(" ", "T");
+    if (!s.endsWith("Z")) s += "Z";
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) {
+    return String(iso).replace("T", " ").slice(0, 19);
+  }
+  const parts = shFmt.formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 function eventTypeLabel(t) {
@@ -254,21 +278,60 @@ function eventTypeLabel(t) {
   return map[t] || t;
 }
 
-async function openCatalog(sellerId, nickname) {
+const pages = {
+  pool: { page: 1, pageSize: 20 },
+  events: { page: 1, pageSize: 50 },
+  candidates: { page: 1, pageSize: 20 },
+  catalog: { page: 1, pageSize: 50, sellerId: null, nickname: null },
+};
+
+function renderPager(el, meta, onPage) {
+  if (!el) return;
+  el.innerHTML = "";
+  const total = meta?.total ?? 0;
+  const page = meta?.page ?? 1;
+  const pagesTotal = meta?.pages ?? 1;
+  const size = meta?.page_size ?? 0;
+  if (!total) {
+    el.innerHTML = `<span class="pager-info">共 0 条</span>`;
+    return;
+  }
+  const info = document.createElement("span");
+  info.className = "pager-info";
+  info.textContent = `共 ${total} 条 · 第 ${page}/${pagesTotal} 页 · 每页 ${size}`;
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "ghost tiny";
+  prev.textContent = "上一页";
+  prev.disabled = page <= 1;
+  prev.onclick = () => onPage(page - 1);
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "ghost tiny";
+  next.textContent = "下一页";
+  next.disabled = page >= pagesTotal;
+  next.onclick = () => onPage(page + 1);
+  el.append(prev, info, next);
+}
+
+async function openCatalog(sellerId, nickname, page = 1) {
   const panel = $("#catalogPanel");
   const title = $("#catalogTitle");
   const hint = $("#catalogHint");
   const body = $("#catalogBody");
+  pages.catalog.sellerId = sellerId;
+  pages.catalog.nickname = nickname;
+  pages.catalog.page = Math.max(1, page);
   panel.hidden = false;
   title.textContent = `在售 · ${nickname || sellerId}`;
   hint.textContent = "加载中…";
   body.innerHTML = "";
   try {
     const data = await api(
-      `/api/pool/${encodeURIComponent(sellerId)}/items?limit=200`,
+      `/api/pool/${encodeURIComponent(sellerId)}/items?page=${pages.catalog.page}&page_size=${pages.catalog.pageSize}`,
     );
-    hint.textContent = data.count
-      ? `${data.count} 件在售（最近扫描 ${shortTime(data.last_scan_at)}）`
+    hint.textContent = data.total
+      ? `共 ${data.total} 件在售（最近扫描 ${shortTime(data.last_scan_at)}，上海时间）`
       : "暂无在售记录。对该卖家点「扫描」后会写入商品标题与价格。";
     for (const it of data.items || []) {
       const href = itemUrl(it.item_id, it.url);
@@ -286,23 +349,31 @@ async function openCatalog(sellerId, nickname) {
         <td>${escapeHtml(shortTime(it.last_seen_at))}</td>`;
       body.appendChild(tr);
     }
+    renderPager($("#catalogPager"), data, (p) => openCatalog(sellerId, nickname, p));
   } catch (e) {
     hint.textContent = e.message;
+    renderPager($("#catalogPager"), { total: 0 }, () => {});
   }
 }
 
 function closeCatalog() {
   const panel = $("#catalogPanel");
   if (panel) panel.hidden = true;
+  pages.catalog.sellerId = null;
 }
 
-async function refreshPool() {
+async function refreshPool(page) {
+  if (page != null) pages.pool.page = Math.max(1, page);
   const all = $("#poolAll").checked;
-  const data = await api(`/api/pool?all=${all ? "true" : "false"}`);
+  const data = await api(
+    `/api/pool?all=${all ? "true" : "false"}&page=${pages.pool.page}&page_size=${pages.pool.pageSize}`,
+  );
+  pages.pool.page = data.page || pages.pool.page;
   const body = $("#poolBody");
   body.innerHTML = "";
   if (!data.sellers.length) {
     body.innerHTML = `<tr><td colspan="6" class="hint">商家池为空。先用关键词发现，或跑 Demo。</td></tr>`;
+    renderPager($("#poolPager"), data, (p) => refreshPool(p));
     return;
   }
   for (const s of data.sellers) {
@@ -324,7 +395,7 @@ async function refreshPool() {
     const catBtn = document.createElement("button");
     catBtn.className = "tiny";
     catBtn.textContent = "在售";
-    catBtn.onclick = () => openCatalog(s.seller_id, s.nickname);
+    catBtn.onclick = () => openCatalog(s.seller_id, s.nickname, 1);
     ops.appendChild(catBtn);
 
     for (const st of ["watching", "paused", "dropped"]) {
@@ -354,7 +425,7 @@ async function refreshPool() {
         });
         toast(`扫描 ${r.status} · 事件 ${r.events?.length || 0}`);
         await refreshAll();
-        await openCatalog(s.seller_id, s.nickname);
+        await openCatalog(s.seller_id, s.nickname, 1);
       } catch (e) {
         toast(e.message);
       }
@@ -362,16 +433,25 @@ async function refreshPool() {
     ops.appendChild(scanBtn);
     body.appendChild(tr);
   }
+  renderPager($("#poolPager"), data, (p) => refreshPool(p));
 }
 
-async function refreshCandidates() {
+async function refreshCandidates(page) {
+  if (page != null) pages.candidates.page = Math.max(1, page);
   const since = $("#candSince").value;
-  const q = since ? `?since=${encodeURIComponent(since)}` : "?since=3650d";
-  const data = await api(`/api/candidates${q}`);
+  const q = new URLSearchParams({
+    page: String(pages.candidates.page),
+    page_size: String(pages.candidates.pageSize),
+  });
+  if (since) q.set("since", since);
+  else q.set("since", "3650d");
+  const data = await api(`/api/candidates?${q}`);
+  pages.candidates.page = data.page || pages.candidates.page;
   const list = $("#candList");
   list.innerHTML = "";
   if (!data.candidates.length) {
     list.innerHTML = `<p class="hint">暂无候选。可点「跑通离线闭环 Demo」生成一条。</p>`;
+    renderPager($("#candPager"), data, (p) => refreshCandidates(p));
     return;
   }
   for (const c of data.candidates) {
@@ -408,15 +488,24 @@ async function refreshCandidates() {
     }
     list.appendChild(el);
   }
+  renderPager($("#candPager"), data, (p) => refreshCandidates(p));
 }
 
-async function refreshEvents() {
+async function refreshEvents(page) {
+  if (page != null) pages.events.page = Math.max(1, page);
   const since = $("#evtSince").value;
-  const data = await api(`/api/events?since=${encodeURIComponent(since)}`);
+  const q = new URLSearchParams({
+    since,
+    page: String(pages.events.page),
+    page_size: String(pages.events.pageSize),
+  });
+  const data = await api(`/api/events?${q}`);
+  pages.events.page = data.page || pages.events.page;
   const body = $("#evtBody");
   body.innerHTML = "";
   if (!data.events.length) {
     body.innerHTML = `<tr><td colspan="6" class="hint">暂无事件。扫描卖家后会出现上新 / 改价等记录。</td></tr>`;
+    renderPager($("#evtPager"), data, (p) => refreshEvents(p));
     return;
   }
   for (const e of data.events) {
@@ -434,7 +523,7 @@ async function refreshEvents() {
     if (e.item_status && e.item_status !== "active") flags.push(e.item_status);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${escapeHtml(shortTime(e.detected_at))}</td>
+      <td title="Asia/Shanghai">${escapeHtml(shortTime(e.detected_at))}</td>
       <td><span class="badge evt-${escapeHtml(e.event_type)}">${escapeHtml(eventTypeLabel(e.event_type))}</span></td>
       <td class="seller-cell">
         <div class="seller-nick">${escapeHtml(nick)}</div>
@@ -448,6 +537,7 @@ async function refreshEvents() {
       <td>${escapeHtml(flags.join(" · ") || "—")}</td>`;
     body.appendChild(tr);
   }
+  renderPager($("#evtPager"), data, (p) => refreshEvents(p));
 }
 
 function escapeHtml(s) {
@@ -545,9 +635,34 @@ function setupForms() {
     }
   });
 
-  $("#poolAll").addEventListener("change", () => refreshPool());
-  $("#candSince").addEventListener("change", () => refreshCandidates());
-  $("#evtSince").addEventListener("change", () => refreshEvents());
+  $("#poolAll").addEventListener("change", () => {
+    pages.pool.page = 1;
+    refreshPool(1);
+  });
+  const poolSize = $("#poolPageSize");
+  if (poolSize) {
+    poolSize.addEventListener("change", () => {
+      pages.pool.pageSize = Number(poolSize.value) || 20;
+      pages.pool.page = 1;
+      refreshPool(1);
+    });
+  }
+  $("#candSince").addEventListener("change", () => {
+    pages.candidates.page = 1;
+    refreshCandidates(1);
+  });
+  $("#evtSince").addEventListener("change", () => {
+    pages.events.page = 1;
+    refreshEvents(1);
+  });
+  const evtSize = $("#evtPageSize");
+  if (evtSize) {
+    evtSize.addEventListener("change", () => {
+      pages.events.pageSize = Number(evtSize.value) || 50;
+      pages.events.page = 1;
+      refreshEvents(1);
+    });
+  }
   const closeCat = $("#btnCloseCatalog");
   if (closeCat) closeCat.addEventListener("click", () => closeCatalog());
 

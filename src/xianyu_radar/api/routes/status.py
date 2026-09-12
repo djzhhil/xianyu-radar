@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 
@@ -14,6 +13,7 @@ from xianyu_radar.api.deps import get_db
 from xianyu_radar.auth.session import auth_mode, try_load_session
 from xianyu_radar.scheduler.runner import is_auth_paused
 from xianyu_radar.storage.db import get_schema_version
+from xianyu_radar.timeutil import since_iso
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ def status(conn: sqlite3.Connection = Depends(get_db)) -> dict:
     ).fetchone()["c"]
     items = conn.execute("SELECT COUNT(*) AS c FROM items").fetchone()["c"]
     candidates = conn.execute("SELECT COUNT(*) AS c FROM candidates").fetchone()["c"]
-    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = since_iso(timedelta(hours=24))
     events_24h = conn.execute(
         "SELECT COUNT(*) AS c FROM item_events WHERE detected_at >= ?",
         (since,),

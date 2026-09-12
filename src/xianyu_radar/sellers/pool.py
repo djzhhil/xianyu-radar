@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
 
 from xianyu_radar.models import SeedItem
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from xianyu_radar.timeutil import now_iso as _now
 
 
 def upsert_seed_item(
@@ -114,27 +110,37 @@ def add_seller_from_discovery(
     return created
 
 
-def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> list[dict]:
+def list_pool(
+    conn: sqlite3.Connection,
+    *,
+    status: str | None = "watching",
+    limit: int | None = None,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Return (rows, total). When limit is None, return all rows."""
+    base_select = (
+        "SELECT s.*, "
+        "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
+        " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords, "
+        "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id AND i.status='active') AS active_item_count, "
+        "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id) AS item_count "
+        "FROM sellers s"
+    )
     if status:
-        rows = conn.execute(
-            "SELECT s.*, "
-            "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
-            " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords, "
-            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id AND i.status='active') AS active_item_count, "
-            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id) AS item_count "
-            "FROM sellers s WHERE s.status=? ORDER BY s.last_seen_at DESC",
-            (status,),
-        ).fetchall()
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM sellers WHERE status=?", (status,)
+        ).fetchone()["c"]
+        sql = f"{base_select} WHERE s.status=? ORDER BY s.last_seen_at DESC"
+        params: list = [status]
     else:
-        rows = conn.execute(
-            "SELECT s.*, "
-            "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
-            " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords, "
-            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id AND i.status='active') AS active_item_count, "
-            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id) AS item_count "
-            "FROM sellers s ORDER BY s.last_seen_at DESC"
-        ).fetchall()
-    return [dict(r) for r in rows]
+        total = conn.execute("SELECT COUNT(*) AS c FROM sellers").fetchone()["c"]
+        sql = f"{base_select} ORDER BY s.last_seen_at DESC"
+        params = []
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params.extend([min(max(limit, 1), 500), max(offset, 0)])
+    rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    return rows, total
 
 
 def list_seller_items(
@@ -143,24 +149,34 @@ def list_seller_items(
     *,
     status: str | None = "active",
     limit: int = 200,
-) -> list[dict]:
-    """Return catalog rows for a seller (what they are selling)."""
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Return (catalog rows, total) for a seller."""
     limit = min(max(limit, 1), 500)
+    offset = max(offset, 0)
     if status:
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM items WHERE seller_id=? AND status=?",
+            (seller_id, status),
+        ).fetchone()["c"]
         rows = conn.execute(
             "SELECT item_id, seller_id, title, price, url, status, first_seen_at, last_seen_at, "
             "last_price, last_title, check_count, source "
             "FROM items WHERE seller_id=? AND status=? "
-            "ORDER BY last_seen_at DESC LIMIT ?",
-            (seller_id, status, limit),
+            "ORDER BY last_seen_at DESC LIMIT ? OFFSET ?",
+            (seller_id, status, limit, offset),
         ).fetchall()
     else:
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM items WHERE seller_id=?",
+            (seller_id,),
+        ).fetchone()["c"]
         rows = conn.execute(
             "SELECT item_id, seller_id, title, price, url, status, first_seen_at, last_seen_at, "
             "last_price, last_title, check_count, source "
             "FROM items WHERE seller_id=? "
-            "ORDER BY last_seen_at DESC LIMIT ?",
-            (seller_id, limit),
+            "ORDER BY last_seen_at DESC LIMIT ? OFFSET ?",
+            (seller_id, limit, offset),
         ).fetchall()
     out = []
     for r in rows:
@@ -168,7 +184,7 @@ def list_seller_items(
         if not d.get("url") and d.get("item_id"):
             d["url"] = f"https://www.goofish.com/item?id={d['item_id']}"
         out.append(d)
-    return out
+    return out, total
 
 
 def set_seller_status(conn: sqlite3.Connection, seller_id: str, status: str) -> None:

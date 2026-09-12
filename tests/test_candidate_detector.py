@@ -30,7 +30,7 @@ def test_candidates_skip_baseline_and_keyword(tmp_path: Path) -> None:
         keyword_hints=["Sony A7M4"],
     )
     assert all(e.is_baseline for e in r1["events"] if e.event_type == "NEW_ITEM")
-    assert list_candidates(conn) == []
+    assert list_candidates(conn)[0] == []
 
     # second scan: new non-target + new target-like
     r2 = apply_scan_result(
@@ -46,7 +46,7 @@ def test_candidates_skip_baseline_and_keyword(tmp_path: Path) -> None:
     )
     new_events = [e for e in r2["events"] if e.event_type == "NEW_ITEM"]
     assert {e.item_id for e in new_events} == {"3", "4"}
-    cands = list_candidates(conn)
+    cands, _total = list_candidates(conn)
     titles = {c["sample_title"] for c in cands}
     assert "Photoshop 教程" in titles
     assert not any("Sony A7M4 进阶" in t for t in titles)

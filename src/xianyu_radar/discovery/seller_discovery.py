@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from datetime import datetime, timezone
 
 from xianyu_radar.auth.mtop import MtopError, call_mtop
 from xianyu_radar.auth.session import AuthError, Session
@@ -13,14 +12,11 @@ from xianyu_radar.discovery.keyword_search import search, search_from_fixture
 from xianyu_radar.models import SeedItem
 from xianyu_radar.scheduler.runner import is_auth_paused
 from xianyu_radar.sellers.pool import add_seller_from_discovery, upsert_seed_item
+from xianyu_radar.timeutil import now_iso as _now
 
 
 class DiscoveryRiskError(MtopError):
     """Raised when discovery hits VALIDATE / RGV587 and must stop."""
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _set_auth_paused(conn: sqlite3.Connection) -> None:
