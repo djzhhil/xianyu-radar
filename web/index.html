@@ -35,14 +35,15 @@
 
     <section class="panel cookie-panel" id="cookiePanel">
       <div class="panel-head">
-        <h2>粘贴 Cookie</h2>
+        <h2>登录态 / Cookie</h2>
         <span class="cookie-status" id="cookieStatus">未检测</span>
       </div>
       <p class="hint">
-        从浏览器已登录的 goofish / 闲鱼页复制 Cookie。必须含 <code>_m_h5_tk</code>。
-        可直接贴整段 <code>a=1; _m_h5_tk=…</code>，或贴 JSON。
-        保存到当前环境 <code>data/&lt;env&gt;/state/default.json</code>。
+        推荐：配置 <code>RADAR_AUTH_MODE=broker</code>，从 Helper Session Broker 租用 Cookie（扫码续期由 Helper 负责）。
+        备用：从浏览器已登录的 goofish / 闲鱼页复制 Cookie（须含 <code>_m_h5_tk</code>），保存到
+        <code>data/&lt;env&gt;/state/default.json</code>。
       </p>
+      <pre class="log" id="brokerHealth" hidden></pre>
       <div class="cookie-format-tabs" role="tablist" aria-label="Cookie 格式">
         <button type="button" class="fmt-btn active" data-fmt="raw">Cookie 字符串</button>
         <button type="button" class="fmt-btn" data-fmt="json">JSON</button>
@@ -55,7 +56,8 @@
       ></textarea>
       <div class="actions-row">
         <button type="button" id="btnPasteCookie">从剪贴板粘贴</button>
-        <button type="button" id="btnSaveCookie">保存 Cookie</button>
+        <button type="button" id="btnSaveCookie">保存本地 Cookie</button>
+        <button type="button" class="ghost" id="btnBrokerRefresh">刷新 Broker 租约</button>
         <button type="button" class="ghost" id="btnCheckCookie">检查 / 探测</button>
         <button type="button" class="ghost" id="btnClearCookiePause">清除 auth 暂停</button>
         <button type="button" class="ghost" id="btnClearCookieInput">清空输入</button>
@@ -94,10 +96,32 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>seller_id</th><th>昵称</th><th>状态</th><th>来源关键词</th><th>操作</th></tr>
+            <tr>
+              <th>卖家</th>
+              <th>状态</th>
+              <th>在售</th>
+              <th>最近扫描</th>
+              <th>来源关键词</th>
+              <th>操作</th>
+            </tr>
           </thead>
           <tbody id="poolBody"></tbody>
         </table>
+      </div>
+      <div class="catalog-panel" id="catalogPanel" hidden>
+        <div class="panel-head">
+          <h3 id="catalogTitle">在售商品</h3>
+          <button type="button" class="ghost tiny" id="btnCloseCatalog">关闭</button>
+        </div>
+        <p class="hint" id="catalogHint"></p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>商品</th><th>价格</th><th>状态</th><th>最近见到</th></tr>
+            </thead>
+            <tbody id="catalogBody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -124,7 +148,14 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>时间</th><th>类型</th><th>卖家</th><th>商品</th><th>baseline</th></tr>
+            <tr>
+              <th>时间</th>
+              <th>类型</th>
+              <th>卖家</th>
+              <th>商品</th>
+              <th>价格 / 变更</th>
+              <th>标记</th>
+            </tr>
           </thead>
           <tbody id="evtBody"></tbody>
         </table>

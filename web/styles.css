@@ -351,6 +351,36 @@ td code { font-size: 0.8rem; color: #f0d2b0; }
 .cand .meta { color: var(--mist); font-size: 0.85rem; }
 .cand .ops { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; }
 
+.item-link {
+  color: #f0d2b0;
+  text-decoration: none;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.item-link:hover { text-decoration: underline; color: #ffd9a8; }
+.item-cell, .seller-cell { max-width: 22rem; }
+.item-id {
+  margin-top: 0.2rem;
+  opacity: 0.65;
+  font-size: 0.72rem;
+}
+.seller-nick { font-weight: 500; }
+.price { white-space: nowrap; font-variant-numeric: tabular-nums; color: #e8c9a0; }
+.ops { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.hint { color: var(--mist); font-size: 0.88rem; margin: 0.35rem 0; }
+
+.catalog-panel {
+  margin-top: 1.1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  animation: fade-up 0.3s ease both;
+}
+.catalog-panel h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.45rem;
@@ -362,6 +392,11 @@ td code { font-size: 0.8rem; color: #f0d2b0; }
 .badge.paused { color: #f0e0a0; }
 .badge.dropped { color: #f0c2ba; }
 .badge.new { color: #f0d2b0; }
+.badge.evt-NEW_ITEM { color: #b7ebc9; }
+.badge.evt-REMOVED_ITEM { color: #f0c2ba; }
+.badge.evt-PRICE_CHANGE { color: #f0e0a0; }
+.badge.evt-TITLE_CHANGE { color: #c5d5ce; }
+.badge.active { color: #b7ebc9; }
 
 footer {
   display: flex;

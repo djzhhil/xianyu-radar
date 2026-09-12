@@ -11,6 +11,7 @@ from xianyu_radar.auth.session import Session
 from xianyu_radar.config import (
     DEFAULT_JITTER_SEC,
     DEFAULT_SELLER_SCAN_INTERVAL_SEC,
+    MTOP_MIN_INTERVAL_SEC,
 )
 from xianyu_radar.sellers.monitor import scan_seller
 from xianyu_radar.sellers.pool import list_pool
@@ -38,10 +39,12 @@ def run_pool_once(
         return [{"status": "skipped", "error_kind": "auth_paused"}]
     sellers = list_pool(conn, status="watching")
     results = []
-    for s in sellers:
+    for idx, s in enumerate(sellers):
         # skip unknown placeholders
         if str(s["seller_id"]).startswith("unknown:"):
             continue
+        if idx > 0:
+            time.sleep(max(float(MTOP_MIN_INTERVAL_SEC), 0.5))
         result = scan_seller(conn, session, s["seller_id"])
         results.append(result)
         if on_result:

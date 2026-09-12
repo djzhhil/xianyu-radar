@@ -1,9 +1,10 @@
-"""Auth session loading from state JSON files."""
+"""Auth session loading from state JSON files or Helper Session Broker."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from xianyu_radar import config as cfg
@@ -19,16 +20,37 @@ class Session:
     token: str
     source: str
     cookie_count: int = 0
+    headers: dict[str, str] = field(default_factory=dict)
+    lease_id: str = ""
+    account_id: str = ""
+    quotas_ms: dict[str, int] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
         return bool(self.cookies and self.token)
 
     @property
+    def from_broker(self) -> bool:
+        return self.source.startswith("broker:")
+
+    @property
     def looks_like_placeholder(self) -> bool:
         """True for unit-test / docs sample tokens that cannot call goofish."""
         t = (self.token or "").lower()
         return t in {"tokensecret", "hello", "token", "test", "abc"} or t.startswith("dummy")
+
+
+def auth_mode() -> str:
+    """Return 'broker' or 'local'."""
+    raw = (os.environ.get("RADAR_AUTH_MODE") or cfg.AUTH_MODE or "local").strip().lower()
+    if raw == "broker":
+        return "broker"
+    # Auto: broker when env fully configured
+    if raw == "auto":
+        from xianyu_radar.auth.broker_client import get_broker_client
+
+        return "broker" if get_broker_client().configured else "local"
+    return "local"
 
 
 def _cookies_from_list(cookies: list) -> tuple[str, str, int]:
@@ -60,7 +82,7 @@ def _cookies_from_header(cookie_header: str) -> tuple[str, str, int]:
     return cookie_header.strip(), token, len(parts)
 
 
-def load_session(path: Path | str | None = None) -> Session:
+def load_session_local(path: Path | str | None = None) -> Session:
     """
     Load session from JSON. Supported shapes:
 
@@ -78,7 +100,8 @@ def load_session(path: Path | str | None = None) -> Session:
             if not candidates:
                 raise AuthError(
                     f"No session file found under {cfg.STATE_DIR}. "
-                    "Place a cookie JSON at data/<env>/state/default.json"
+                    "Place a cookie JSON at data/<env>/state/default.json "
+                    "or set RADAR_AUTH_MODE=broker"
                 )
             path = candidates[0]
     path = Path(path)
@@ -109,6 +132,19 @@ def load_session(path: Path | str | None = None) -> Session:
         source=str(path),
         cookie_count=count,
     )
+
+
+def load_session(path: Path | str | None = None) -> Session:
+    """Load from broker when configured, otherwise local JSON."""
+    mode = auth_mode()
+    if mode == "broker" and path is None:
+        from xianyu_radar.auth.broker_client import BrokerError, get_broker_client
+
+        try:
+            return get_broker_client().ensure_session()
+        except BrokerError as e:
+            raise AuthError(str(e)) from e
+    return load_session_local(path)
 
 
 def try_load_session(path: Path | str | None = None) -> Session | None:

@@ -50,8 +50,31 @@ radar env isolate
 
 ## 登录态
 
-将 Cookie 放到 `data/state/default.json`（见 `docs/session_format.md`）。  
-必须包含 `_m_h5_tk`。也可在 Web「登录态」页粘贴保存。
+### 方式 A：共用 Helper Cookie（推荐）
+
+Helper 扫码登录并续期，Radar 通过 Session Broker 租用：
+
+```bash
+# Helper
+export XIANYU_BROKER_TOKEN='足够长的随机机器凭证'
+
+# Radar
+export RADAR_AUTH_MODE=broker   # 或 auto
+export RADAR_BROKER_URL=http://127.0.0.1:59188
+export RADAR_BROKER_TOKEN='与 Helper 相同'
+export RADAR_ACCOUNT_ID='闲鱼账号 cookie_id（通常为 unb）'
+```
+
+- 租约：`POST /api/v1/session-broker/accounts/{id}/lease`
+- 回写/风控：`POST .../report`
+- 监控：`GET /api/v1/session-broker/health`（也在 Radar 状态接口里透出）
+
+安全说明见 [`docs/security.md`](docs/security.md)：`.env` / `data/` 权限、`Cookie` 不落盘（broker 模式）、API 不回传明文。
+
+### 方式 B：本地粘贴 Cookie
+
+将 Cookie 放到 `data/<env>/state/default.json`（见 `docs/session_format.md`），
+必须包含 `_m_h5_tk`。也可在 Web「登录态」页粘贴保存（broker 模式下仅作 fallback）。
 
 ```bash
 radar auth check

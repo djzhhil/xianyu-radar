@@ -44,27 +44,42 @@ async function refreshStatus() {
   const cookieStatus = $("#cookieStatus");
   const envLabel = s.env || "?";
   if (s.auth.ok) {
+    const modeTag = s.auth.mode === "broker" || s.auth.from_broker ? "Broker" : "本地";
     if (s.auth.looks_like_placeholder) {
       pill.textContent = `${envLabel} · 占位 Cookie（不能真扫）`;
       pill.className = "auth-pill bad";
       cookieStatus.textContent = "占位 Cookie";
       cookieStatus.className = "cookie-status bad";
     } else if (s.auth.paused) {
-      pill.textContent = `${envLabel} · 已登录 · auth 已暂停`;
+      pill.textContent = `${envLabel} · ${modeTag} · auth 已暂停`;
       pill.className = "auth-pill bad";
       cookieStatus.textContent = "已暂停";
       cookieStatus.className = "cookie-status warn";
     } else {
-      pill.textContent = `${envLabel} · 已登录 · ${s.auth.cookie_count} cookies`;
+      const acct = s.auth.account_id ? ` · ${s.auth.account_id}` : "";
+      pill.textContent = `${envLabel} · ${modeTag} · ${s.auth.cookie_count} cookies${acct}`;
       pill.className = "auth-pill ok";
-      cookieStatus.textContent = `已保存 · ${s.auth.cookie_count} 项`;
+      cookieStatus.textContent = s.auth.from_broker
+        ? `Broker 租约 · ${s.auth.cookie_count} 项`
+        : `已保存 · ${s.auth.cookie_count} 项`;
       cookieStatus.className = "cookie-status ok";
     }
   } else {
-    pill.textContent = `${envLabel} · 未登录（点此粘贴 Cookie）`;
+    const brokerHint = s.auth.mode === "broker" ? "连接 Broker / 检查 Helper" : "点此粘贴 Cookie";
+    pill.textContent = `${envLabel} · 未登录（${brokerHint}）`;
     pill.className = "auth-pill bad";
     cookieStatus.textContent = "未登录";
     cookieStatus.className = "cookie-status bad";
+  }
+  const brokerBox = $("#brokerHealth");
+  if (brokerBox) {
+    if (s.broker) {
+      brokerBox.hidden = false;
+      brokerBox.textContent = JSON.stringify(s.broker, null, 2);
+    } else {
+      brokerBox.hidden = true;
+      brokerBox.textContent = "";
+    }
   }
   if (s.auth.hint) {
     console.info("[auth]", s.auth.hint);
@@ -193,6 +208,92 @@ function setupCookiePanel() {
     toast("已清除 auth 暂停");
     await refreshStatus();
   });
+
+  const btnBroker = $("#btnBrokerRefresh");
+  if (btnBroker) {
+    btnBroker.addEventListener("click", async () => {
+      try {
+        const r = await api("/api/auth/broker/refresh", { method: "POST", body: "{}" });
+        setLog("#cookieLog", r);
+        toast("已从 Helper 重新租约");
+        await refreshStatus();
+      } catch (e) {
+        setLog("#cookieLog", e.message);
+        toast(e.message);
+      }
+    });
+  }
+}
+
+function itemUrl(itemId, url) {
+  if (url) return url;
+  if (itemId) return `https://www.goofish.com/item?id=${encodeURIComponent(itemId)}`;
+  return "";
+}
+
+function formatPrice(p) {
+  if (p == null || p === "") return "—";
+  const s = String(p).trim();
+  if (!s) return "—";
+  return /¥|￥/.test(s) ? s : `¥${s}`;
+}
+
+function shortTime(iso) {
+  if (!iso) return "—";
+  const s = String(iso);
+  return s.length > 19 ? s.slice(0, 19).replace("T", " ") : s.replace("T", " ");
+}
+
+function eventTypeLabel(t) {
+  const map = {
+    NEW_ITEM: "上新",
+    REMOVED_ITEM: "下架",
+    PRICE_CHANGE: "改价",
+    TITLE_CHANGE: "改标题",
+  };
+  return map[t] || t;
+}
+
+async function openCatalog(sellerId, nickname) {
+  const panel = $("#catalogPanel");
+  const title = $("#catalogTitle");
+  const hint = $("#catalogHint");
+  const body = $("#catalogBody");
+  panel.hidden = false;
+  title.textContent = `在售 · ${nickname || sellerId}`;
+  hint.textContent = "加载中…";
+  body.innerHTML = "";
+  try {
+    const data = await api(
+      `/api/pool/${encodeURIComponent(sellerId)}/items?limit=200`,
+    );
+    hint.textContent = data.count
+      ? `${data.count} 件在售（最近扫描 ${shortTime(data.last_scan_at)}）`
+      : "暂无在售记录。对该卖家点「扫描」后会写入商品标题与价格。";
+    for (const it of data.items || []) {
+      const href = itemUrl(it.item_id, it.url);
+      const name = it.title || it.last_title || `(无标题 ${it.item_id})`;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="item-cell">
+          <a class="item-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">
+            ${escapeHtml(name)}
+          </a>
+          <div class="item-id"><code>${escapeHtml(it.item_id)}</code></div>
+        </td>
+        <td class="price">${escapeHtml(formatPrice(it.price || it.last_price))}</td>
+        <td><span class="badge ${escapeHtml(it.status || "")}">${escapeHtml(it.status || "—")}</span></td>
+        <td>${escapeHtml(shortTime(it.last_seen_at))}</td>`;
+      body.appendChild(tr);
+    }
+  } catch (e) {
+    hint.textContent = e.message;
+  }
+}
+
+function closeCatalog() {
+  const panel = $("#catalogPanel");
+  if (panel) panel.hidden = true;
 }
 
 async function refreshPool() {
@@ -200,15 +301,32 @@ async function refreshPool() {
   const data = await api(`/api/pool?all=${all ? "true" : "false"}`);
   const body = $("#poolBody");
   body.innerHTML = "";
+  if (!data.sellers.length) {
+    body.innerHTML = `<tr><td colspan="6" class="hint">商家池为空。先用关键词发现，或跑 Demo。</td></tr>`;
+    return;
+  }
   for (const s of data.sellers) {
+    const nick = s.nickname || "—";
+    const active = s.active_item_count ?? 0;
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><code>${s.seller_id}</code></td>
-      <td>${s.nickname || "—"}</td>
-      <td><span class="badge ${s.status}">${s.status}</span></td>
-      <td>${s.keywords || "—"}</td>
+      <td class="seller-cell">
+        <div class="seller-nick">${escapeHtml(nick)}</div>
+        <div class="item-id"><code>${escapeHtml(s.seller_id)}</code></div>
+      </td>
+      <td><span class="badge ${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
+      <td>${active}</td>
+      <td>${escapeHtml(shortTime(s.last_scan_at))}</td>
+      <td>${escapeHtml(s.keywords || "—")}</td>
       <td class="ops"></td>`;
     const ops = tr.querySelector(".ops");
+
+    const catBtn = document.createElement("button");
+    catBtn.className = "tiny";
+    catBtn.textContent = "在售";
+    catBtn.onclick = () => openCatalog(s.seller_id, s.nickname);
+    ops.appendChild(catBtn);
+
     for (const st of ["watching", "paused", "dropped"]) {
       if (st === s.status) continue;
       const btn = document.createElement("button");
@@ -226,7 +344,7 @@ async function refreshPool() {
       ops.appendChild(btn);
     }
     const scanBtn = document.createElement("button");
-    scanBtn.className = "tiny";
+    scanBtn.className = "ghost tiny";
     scanBtn.textContent = "扫描";
     scanBtn.onclick = async () => {
       try {
@@ -236,6 +354,7 @@ async function refreshPool() {
         });
         toast(`扫描 ${r.status} · 事件 ${r.events?.length || 0}`);
         await refreshAll();
+        await openCatalog(s.seller_id, s.nickname);
       } catch (e) {
         toast(e.message);
       }
@@ -258,13 +377,19 @@ async function refreshCandidates() {
   for (const c of data.candidates) {
     const el = document.createElement("article");
     el.className = "cand";
+    const title = c.sample_title || c.normalized_title || "(无标题)";
+    const href = itemUrl(c.sample_item_id, null);
+    const titleHtml = href
+      ? `<a class="item-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>`
+      : escapeHtml(title);
     el.innerHTML = `
-      <div class="title">${escapeHtml(c.sample_title || c.normalized_title)}</div>
-      <div class="meta">
-        来源卖家 ${c.seller_count} · 出现 ${c.appearance_count} · score ${Number(c.score).toFixed(1)}
-        · <span class="badge ${c.status}">${c.status}</span>
+      <div class="title">${titleHtml}</div>
+      <div class="meta price-line">${escapeHtml(formatPrice(c.sample_price))}
+        · 来源卖家 ${c.seller_count} · 出现 ${c.appearance_count}
+        · score ${Number(c.score).toFixed(1)}
+        · <span class="badge ${escapeHtml(c.status)}">${escapeHtml(c.status)}</span>
       </div>
-      <div class="meta">${escapeHtml((c.source_sellers || []).join(", "))}</div>
+      <div class="meta">${escapeHtml((c.source_sellers || []).join(", ") || "—")}</div>
       <div class="ops"></div>`;
     const ops = el.querySelector(".ops");
     for (const st of ["watching", "testing", "validated", "rejected"]) {
@@ -290,14 +415,37 @@ async function refreshEvents() {
   const data = await api(`/api/events?since=${encodeURIComponent(since)}`);
   const body = $("#evtBody");
   body.innerHTML = "";
+  if (!data.events.length) {
+    body.innerHTML = `<tr><td colspan="6" class="hint">暂无事件。扫描卖家后会出现上新 / 改价等记录。</td></tr>`;
+    return;
+  }
   for (const e of data.events) {
+    const href = itemUrl(e.item_id, e.url);
+    const title = e.title || `(无标题 ${e.item_id})`;
+    const nick = e.seller_nickname || e.seller_id;
+    let priceCell = formatPrice(e.price);
+    if (e.event_type === "PRICE_CHANGE" && (e.old_value || e.new_value)) {
+      priceCell = `${formatPrice(e.old_value)} → ${formatPrice(e.new_value)}`;
+    } else if (e.event_type === "TITLE_CHANGE" && e.new_value) {
+      priceCell = formatPrice(e.price);
+    }
+    const flags = [];
+    if (e.is_baseline) flags.push("基线");
+    if (e.item_status && e.item_status !== "active") flags.push(e.item_status);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${e.detected_at}</td>
-      <td>${e.event_type}</td>
-      <td><code>${e.seller_id}</code></td>
-      <td><code>${e.item_id}</code></td>
-      <td>${e.is_baseline ? "yes" : ""}</td>`;
+      <td>${escapeHtml(shortTime(e.detected_at))}</td>
+      <td><span class="badge evt-${escapeHtml(e.event_type)}">${escapeHtml(eventTypeLabel(e.event_type))}</span></td>
+      <td class="seller-cell">
+        <div class="seller-nick">${escapeHtml(nick)}</div>
+        <div class="item-id"><code>${escapeHtml(e.seller_id)}</code></div>
+      </td>
+      <td class="item-cell">
+        <a class="item-link" href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>
+        <div class="item-id"><code>${escapeHtml(e.item_id)}</code></div>
+      </td>
+      <td class="price">${escapeHtml(priceCell)}</td>
+      <td>${escapeHtml(flags.join(" · ") || "—")}</td>`;
     body.appendChild(tr);
   }
 }
@@ -400,6 +548,8 @@ function setupForms() {
   $("#poolAll").addEventListener("change", () => refreshPool());
   $("#candSince").addEventListener("change", () => refreshCandidates());
   $("#evtSince").addEventListener("change", () => refreshEvents());
+  const closeCat = $("#btnCloseCatalog");
+  if (closeCat) closeCat.addEventListener("click", () => closeCatalog());
 
   $("#btnSaveSession").addEventListener("click", async () => {
     try {

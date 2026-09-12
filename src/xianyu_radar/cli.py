@@ -113,7 +113,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
         args.keyword,
         session=session,
         fixture_path=args.fixture,
-        enrich=not args.no_enrich,
+        enrich=bool(getattr(args, "enrich", False)) and not bool(getattr(args, "no_enrich", False)),
+        max_enrich=int(getattr(args, "max_enrich", 0) or 0),
     )
     conn.close()
     print(
@@ -331,7 +332,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keyword", "-k", required=True)
     p.add_argument("--state", default=None)
     p.add_argument("--fixture", default=None, help="Offline search fixture")
-    p.add_argument("--no-enrich", action="store_true")
+    p.add_argument(
+        "--enrich",
+        action="store_true",
+        help="Optional detail enrich (x5sec risk). Prefer CDN seller ids from search.",
+    )
+    p.add_argument("--no-enrich", action="store_true", help="Deprecated; enrich is off by default")
+    p.add_argument("--max-enrich", type=int, default=0)
     p.set_defaults(func=cmd_discover)
 
     p = sub.add_parser("pool", help="Seller pool")

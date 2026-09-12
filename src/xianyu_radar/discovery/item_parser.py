@@ -10,6 +10,11 @@ from xianyu_radar.models import SeedItem, SellerItem
 
 ITEM_ID_RE = re.compile(r"(?:(?:itemId|id)=)(\d+)", re.I)
 FLEAMARKET_RE = re.compile(r"fleamarket://(?:item|awesome_detail).*?[?&](?:itemId|id)=(\d+)", re.I)
+# Taobao/Xianyu CDN often embeds numeric userId: .../uploaded/i1/2226021703/O1CN0...
+CDN_USER_ID_RE = re.compile(
+    r"(?:alicdn\.com|taobaocdn\.com)/[^?]*/(?:uploaded/)?i\d+/(\d{5,16})/",
+    re.I,
+)
 
 
 def extract_item_id(*candidates: Any) -> str | None:
@@ -43,6 +48,27 @@ def extract_item_id(*candidates: Any) -> str | None:
                     got = extract_item_id(c[key])
                     if got:
                         return got
+    return None
+
+
+def extract_seller_id_from_media(*candidates: Any) -> str | None:
+    """Extract numeric seller/user id from alicdn/taobaocdn image URLs."""
+    for c in candidates:
+        if c is None:
+            continue
+        if isinstance(c, dict):
+            for key in ("url", "picUrl", "userAvatarUrl", "pic"):
+                if key in c:
+                    got = extract_seller_id_from_media(c[key])
+                    if got:
+                        return got
+            continue
+        s = str(c).strip()
+        if not s:
+            continue
+        m = CDN_USER_ID_RE.search(s)
+        if m:
+            return m.group(1)
     return None
 
 
@@ -103,14 +129,22 @@ def parse_search_results(payload: dict[str, Any]) -> list[SeedItem]:
         raw_link = main.get("targetUrl") or ""
         url = normalize_goofish_url(raw_link, item_id)
         seller_nick = ex.get("userNickName") or None
-        # Rare: userId in args
-        seller_id = extract_item_id(args.get("userId"), args.get("sellerId"))
-        # extract_item_id is for items; seller ids are also numeric strings
+        # Prefer plaintext numeric ids when present.
+        seller_id = None
         for key in ("userId", "sellerId", "uid"):
             val = args.get(key)
             if val is not None and str(val).isdigit():
                 seller_id = str(val)
                 break
+        # Search cards usually encrypt seller_id; recover from CDN image paths instead.
+        if not seller_id:
+            detail_params = ex.get("detailParams") or {}
+            seller_id = extract_seller_id_from_media(
+                ex.get("picUrl"),
+                ex.get("userAvatarUrl"),
+                detail_params.get("picUrl") if isinstance(detail_params, dict) else None,
+                main.get("picUrl"),
+            )
 
         items.append(
             SeedItem(
@@ -171,18 +205,55 @@ def parse_shop_card_list(payload: dict[str, Any]) -> list[SellerItem]:
 
 
 def extract_seller_id(detail_payload: dict[str, Any]) -> str | None:
-    """From mtop.taobao.idle.pc.detail response."""
+    """From mtop.taobao.idle.pc.detail response (sellerDO / item nested shapes)."""
     data = detail_payload.get("data") or detail_payload
-    seller = data.get("sellerDO") or {}
-    sid = seller.get("sellerId") or seller.get("userId")
-    if sid is None:
+    if not isinstance(data, dict):
         return None
-    s = str(sid).strip()
-    return s if s.isdigit() else None
+    candidates: list[Any] = []
+    seller = data.get("sellerDO") or data.get("seller") or {}
+    if isinstance(seller, dict):
+        candidates.extend(
+            [
+                seller.get("sellerId"),
+                seller.get("userId"),
+                seller.get("uid"),
+                seller.get("id"),
+            ]
+        )
+    item = data.get("itemDO") or data.get("item") or {}
+    if isinstance(item, dict):
+        candidates.extend(
+            [
+                item.get("sellerId"),
+                item.get("userId"),
+                (item.get("seller") or {}).get("userId")
+                if isinstance(item.get("seller"), dict)
+                else None,
+            ]
+        )
+    for key in ("sellerId", "userId", "uid"):
+        candidates.append(data.get(key))
+    for sid in candidates:
+        if sid is None:
+            continue
+        s = str(sid).strip()
+        if s.isdigit():
+            return s
+    return None
 
 
 def extract_seller_nick(detail_payload: dict[str, Any]) -> str | None:
     data = detail_payload.get("data") or detail_payload
-    seller = data.get("sellerDO") or {}
-    nick = seller.get("nick") or seller.get("userNick")
-    return str(nick) if nick else None
+    if not isinstance(data, dict):
+        return None
+    seller = data.get("sellerDO") or data.get("seller") or {}
+    if isinstance(seller, dict):
+        nick = seller.get("nick") or seller.get("userNick") or seller.get("sellerNick")
+        if nick:
+            return str(nick)
+    item = data.get("itemDO") or data.get("item") or {}
+    if isinstance(item, dict):
+        nick = item.get("userNick") or item.get("sellerNick")
+        if nick:
+            return str(nick)
+    return None

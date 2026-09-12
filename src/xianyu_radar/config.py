@@ -28,6 +28,10 @@ DEFAULT_SELLER_SCAN_INTERVAL_SEC = 90
 DEFAULT_JITTER_SEC = 30
 DEFAULT_DISCOVERY_INTERVAL_SEC = 3600
 MAX_CONSECUTIVE_FAILURES = 5
+# Minimum gap between MTOP calls when not using broker quotas
+MTOP_MIN_INTERVAL_SEC = float(os.environ.get("RADAR_MTOP_MIN_INTERVAL_SEC") or "1.0")
+# local | broker | auto (broker if RADAR_BROKER_* set)
+AUTH_MODE = (os.environ.get("RADAR_AUTH_MODE") or "auto").strip().lower()
 
 SCHEMA_VERSION = 1
 
@@ -62,6 +66,16 @@ def ensure_data_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        from xianyu_radar.security import harden_path
+
+        harden_path(DATA_DIR)
+        harden_path(STATE_DIR)
+        harden_path(DEBUG_DIR)
+        if DB_PATH.exists():
+            harden_path(DB_PATH, file_mode=0o600)
+    except Exception:
+        pass
 
 
 # Initialize defaults (prod unless RADAR_ENV overrides)

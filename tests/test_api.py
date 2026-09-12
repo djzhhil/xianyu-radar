@@ -75,7 +75,11 @@ def test_discover_fixture(client: TestClient) -> None:
     assert r.json()["item_count"] == 1
 
 
-def test_save_session(client: TestClient) -> None:
+def test_save_session(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("RADAR_AUTH_MODE", "local")
+    monkeypatch.delenv("RADAR_BROKER_URL", raising=False)
+    monkeypatch.delenv("RADAR_BROKER_TOKEN", raising=False)
+    monkeypatch.delenv("RADAR_ACCOUNT_ID", raising=False)
     r = client.post(
         "/api/auth/session",
         json={

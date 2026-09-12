@@ -119,7 +119,9 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
         rows = conn.execute(
             "SELECT s.*, "
             "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
-            " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords "
+            " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords, "
+            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id AND i.status='active') AS active_item_count, "
+            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id) AS item_count "
             "FROM sellers s WHERE s.status=? ORDER BY s.last_seen_at DESC",
             (status,),
         ).fetchall()
@@ -127,10 +129,46 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
         rows = conn.execute(
             "SELECT s.*, "
             "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
-            " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords "
+            " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords, "
+            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id AND i.status='active') AS active_item_count, "
+            "(SELECT COUNT(*) FROM items i WHERE i.seller_id=s.seller_id) AS item_count "
             "FROM sellers s ORDER BY s.last_seen_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def list_seller_items(
+    conn: sqlite3.Connection,
+    seller_id: str,
+    *,
+    status: str | None = "active",
+    limit: int = 200,
+) -> list[dict]:
+    """Return catalog rows for a seller (what they are selling)."""
+    limit = min(max(limit, 1), 500)
+    if status:
+        rows = conn.execute(
+            "SELECT item_id, seller_id, title, price, url, status, first_seen_at, last_seen_at, "
+            "last_price, last_title, check_count, source "
+            "FROM items WHERE seller_id=? AND status=? "
+            "ORDER BY last_seen_at DESC LIMIT ?",
+            (seller_id, status, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT item_id, seller_id, title, price, url, status, first_seen_at, last_seen_at, "
+            "last_price, last_title, check_count, source "
+            "FROM items WHERE seller_id=? "
+            "ORDER BY last_seen_at DESC LIMIT ?",
+            (seller_id, limit),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if not d.get("url") and d.get("item_id"):
+            d["url"] = f"https://www.goofish.com/item?id={d['item_id']}"
+        out.append(d)
+    return out
 
 
 def set_seller_status(conn: sqlite3.Connection, seller_id: str, status: str) -> None:

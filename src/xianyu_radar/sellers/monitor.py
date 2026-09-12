@@ -142,7 +142,7 @@ def scan_seller(
         conn.commit()
         return {"scan_id": scan_id, "status": "failed", "error_kind": "auth", "error": str(e)}
     except MtopError as e:
-        kind = "rate_limit" if "VALIDATE" in str(e) else "network"
+        kind = "rate_limit" if ("VALIDATE" in str(e) or "rate limited" in str(e).lower()) else "network"
         conn.execute(
             "INSERT INTO scans(id, seller_id, started_at, finished_at, status, error_kind) "
             "VALUES (?,?,?,?, 'failed', ?)",
@@ -152,6 +152,18 @@ def scan_seller(
             "UPDATE sellers SET consecutive_failures = consecutive_failures + 1 WHERE seller_id=?",
             (seller_id,),
         )
+        # VALIDATE / RGV587: pause whole pool like auth failure to avoid hammering.
+        if kind == "rate_limit":
+            conn.execute(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES ('auth_paused', '1')"
+            )
+            conn.commit()
+            return {
+                "scan_id": scan_id,
+                "status": "failed",
+                "error_kind": "auth",
+                "error": str(e),
+            }
         conn.commit()
         return {"scan_id": scan_id, "status": "failed", "error_kind": kind, "error": str(e)}
 

@@ -13,8 +13,14 @@ def _now() -> str:
 
 
 def load_active_items(conn: sqlite3.Connection, seller_id: str) -> dict[str, dict]:
+    """Load seller catalog for diff.
+
+    Discovery seeds (source=discovery) are excluded so the first real shop scan
+    remains a baseline even if discover already wrote those item rows.
+    """
     rows = conn.execute(
-        "SELECT * FROM items WHERE seller_id=? AND status='active'",
+        "SELECT * FROM items WHERE seller_id=? AND status='active' "
+        "AND COALESCE(source,'') != 'discovery'",
         (seller_id,),
     ).fetchall()
     return {r["item_id"]: dict(r) for r in rows}
@@ -49,7 +55,8 @@ def upsert_seller_item(
         check = int(existing["check_count"] or 0) + (1 if bump_check else 0)
         conn.execute(
             "UPDATE items SET seller_id=?, title=?, price=?, url=?, status='active', "
-            "last_seen_at=?, last_price=?, last_title=?, check_count=? WHERE item_id=?",
+            "last_seen_at=?, last_price=?, last_title=?, check_count=?, source='seller_scan' "
+            "WHERE item_id=?",
             (
                 seller_id,
                 item.title,
