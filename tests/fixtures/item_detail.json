@@ -1,0 +1,13 @@
+{
+  "data": {
+    "itemDO": {
+      "itemId": "123456",
+      "title": "Sony A7M4 Body",
+      "soldPrice": "13999"
+    },
+    "sellerDO": {
+      "sellerId": "999888777",
+      "nick": "seller_01"
+    }
+  }
+}

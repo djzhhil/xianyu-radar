@@ -1,0 +1,183 @@
+{
+  "api": "mtop.idle.web.xyh.item.list",
+  "data": {
+    "cardList": [
+      {
+        "cardData": {
+          "auctionType": "b",
+          "categoryId": 50023914,
+          "detailParams": {
+            "picWidth": "827",
+            "itemId": "1059978585702",
+            "picUrl": "http://img.alicdn.com/bao/uploaded/i4/2222621138424/O1CN017uiWGs2C6FbbyRgti_!!4611686018427387384-53-xy_item.heic",
+            "picHeight": "1097",
+            "postInfo": "包邮",
+            "soldPrice": "0.02",
+            "title": "【失控进化】+内测资格名额！！！"
+          },
+          "detailUrl": "fleamarket://awesome_detail?itemId=1059978585702&flutter=true&needNotPreGet=true&hitNativeGroupItemV5=true",
+          "id": "1059978585702",
+          "itemStatus": 0,
+          "picInfo": {
+            "hasVideo": false,
+            "height": 1097,
+            "picUrl": "http://img.alicdn.com/bao/uploaded/i4/2222621138424/O1CN017uiWGs2C6FbbyRgti_!!4611686018427387384-53-xy_item.heic",
+            "width": 827
+          },
+          "priceInfo": {
+            "preText": "¥",
+            "price": "0.02"
+          },
+          "title": "【失控进化】+内测资格��额！！！",
+          "trackParams": {
+            "quattroSceneCode": "xyh_item_rec_v2",
+            "XyhBucketId": "3",
+            "quattroStrategyCode": "master",
+            "isShopUser": "1",
+            "rankScore": "53.60688160792386",
+            "triggerSet": "",
+            "dislikeExtParams": "{\"triggersTrack\":\"\"}",
+            "quattroPoolId": "4",
+            "pvid": "b3bafde0-af84-474f-a412-9b9f50aa5426",
+            "algoTemplateId": "2",
+            "match_type": "113",
+            "scm": "1007.42078.401092.unirec000032078",
+            "totalMatchCount": "199",
+            "quattroAb": "224122^1044433",
+            "test_id": "401092",
+            "quattroAbFormat": "224122###1044433",
+            "quattroPoolIds": "4,208965_2,213894_3,176264_3,178866_4,181789_1,185072_1,160657_1,174858_17,184619_1,214772_1,214778_1,214779_1,7000000_1156001,7000000_1699001,7100000_1156002,7100000_1622001,7110000_1640001,7110000_864001,7111000_0,group_id_0,easyBuy_1",
+            "item_id": "1059978585702",
+            "cate_id": "201409706",
+            "match_score": "1.0000001111620804E-6",
+            "match_name": "default2i",
+            "deduction_flag": "0",
+            "XyhBucketInfo": "rec",
+            "user_id": "3371022660",
+            "labelBucketId": "15",
+            "serviceUtParams": "[{\"arg1\":\"46_tag_r2_1291\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"热销第3名\"}},{\"arg1\":\"46_tag_r3_1047\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"2人小刀价\"}},{\"arg1\":\"46_tag_r3_9\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"577人想要\"}},{\"arg1\":\"46_tag_r1_13\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"freeShippingIcon\"}}]"
+          }
+        },
+        "cardType": 1003
+      },
+      {
+        "cardData": {
+          "auctionType": "b",
+          "categoryId": 50023914,
+          "detailParams": {
+            "picWidth": "871",
+            "itemId": "1057674791492",
+            "picUrl": "http://img.alicdn.com/bao/uploaded/i2/2222621138424/O1CN01yrb1xh2C6FbafeCKs_!!4611686018427387384-53-xy_item.heic",
+            "picHeight": "861",
+            "postInfo": "包邮",
+            "soldPrice": "0.03",
+            "title": "【王者荣耀】【秒兑✅】3.23元！888个皮肤碎片！"
+          },
+          "detailUrl": "fleamarket://awesome_detail?itemId=1057674791492&flutter=true&needNotPreGet=true&hitNativeGroupItemV5=true",
+          "id": "1057674791492",
+          "itemStatus": 0,
+          "picInfo": {
+            "hasVideo": false,
+            "height": 861,
+            "picUrl": "http://img.alicdn.com/bao/uploaded/i2/2222621138424/O1CN01yrb1xh2C6FbafeCKs_!!4611686018427387384-53-xy_item.heic",
+            "width": 871
+          },
+          "priceInfo": {
+            "preText": "¥",
+            "price": "0.03"
+          },
+          "title": "【王者荣耀】【秒兑✅】3.23元！888个皮肤碎片！",
+          "trackParams": {
+            "quattroSceneCode": "xyh_item_rec_v2",
+            "XyhBucketId": "3",
+            "quattroStrategyCode": "master",
+            "isShopUser": "1",
+            "rankScore": "2.916896084545135",
+            "triggerSet": "",
+            "dislikeExtParams": "{\"triggersTrack\":\"\"}",
+            "quattroPoolId": "4",
+            "pvid": "b3bafde0-af84-474f-a412-9b9f50aa5426",
+            "algoTemplateId": "2",
+            "match_type": "113",
+            "scm": "1007.42078.401092.unirec000032078",
+            "totalMatchCount": "199",
+            "quattroAb": "224122^1044433",
+            "test_id": "401092",
+            "quattroAbFormat": "224122###1044433",
+            "quattroPoolIds": "208965_2,213894_3,200313_1,203783_1,207112_1,176264_3,166552_1,188418_1,186099_1,185072_1,192382_1,188421_1,185650_2,188761_2,187942_1,178866_4,181789_1,175752_1,160657_1,174858_17,184619_1,214563_1,214816_1,214772_1,214778_1,214779_1,187280_3,187060_2,theme_1,7000000_189001,7100000_156023,7100000_1852002,7110000_1470077,7110000_93147,7111000_0,group_id_0,easyBuy_1",
+            "item_id": "1057674791492",
+            "cate_id": "200928013",
+            "match_score": "1.0000001111620804E-6",
+            "match_name": "default2i",
+            "deduction_flag": "0",
+            "XyhBucketInfo": "rec",
+            "user_id": "3371022660",
+            "labelBucketId": "15",
+            "serviceUtParams": "[{\"arg1\":\"46_tag_r2_1291\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"热销第1名\"}},{\"arg1\":\"46_tag_r3_1047\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"2人小刀价\"}},{\"arg1\":\"46_tag_r3_9\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"2520人想要\"}},{\"arg1\":\"46_tag_r1_13\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"freeShippingIcon\"}}]"
+          }
+        },
+        "cardType": 1003
+      },
+      {
+        "cardData": {
+          "auctionType": "b",
+          "categoryId": 50023914,
+          "detailParams": {
+            "picWidth": "827",
+            "itemId": "1060605868843",
+            "picUrl": "http://img.alicdn.com/bao/uploaded/i2/2222621138424/O1CN01UrNjWF2C6Fbb2UgDJ_!!4611686018427387384-53-xy_item.heic",
+            "picHeight": "615",
+            "postInfo": "包邮",
+            "soldPrice": "0.01",
+            "title": "《全主线已清》600抽原神自抽号，600抽+51000原石，"
+          },
+          "detailUrl": "fleamarket://awesome_detail?itemId=1060605868843&flutter=true&needNotPreGet=true&hitNativeGroupItemV5=true",
+          "id": "1060605868843",
+          "itemStatus": 0,
+          "picInfo": {
+            "hasVideo": false,
+            "height": 615,
+            "picUrl": "http://img.alicdn.com/bao/uploaded/i2/2222621138424/O1CN01UrNjWF2C6Fbb2UgDJ_!!4611686018427387384-53-xy_item.heic",
+            "width": 827
+          },
+          "priceInfo": {
+            "preText": "¥",
+            "price": "0.01"
+          },
+          "title": "《全主线已清》600抽原神自抽号，600抽+51000原石，",
+          "trackParams": {
+            "quattroSceneCode": "xyh_item_rec_v2",
+            "XyhBucketId": "3",
+            "quattroStrategyCode": "master",
+            "isShopUser": "1",
+            "rankScore": "1.4330064442838715",
+            "triggerSet": "",
+            "dislikeExtParams": "{\"triggersTrack\":\"\"}",
+            "quattroPoolId": "4",
+            "pvid": "b3bafde0-af84-474f-a412-9b9f50aa5426",
+            "algoTemplateId": "2",
+            "match_type": "113",
+            "scm": "1007.42078.401092.unirec000032078",
+            "totalMatchCount": "199",
+            "quattroAb": "224122^1044433",
+            "test_id": "401092",
+            "quattroAbFormat": "224122###1044433",
+            "quattroPoolIds": "4,208965_2,213894_3,196606_2,207749_1,176264_3,192387_1,175750_1,178866_4,181789_1,185072_1,180785_2,185650_2,160657_1,184619_1,174858_17,214562_1,214772_1,214778_1,214779_1,7000000_1699001,7100000_1699002,7110000_1006031,7110000_707046,7110000_707049,7111000_0,group_id_0,easyBuy_2,easyBuy_1",
+            "item_id": "1060605868843",
+            "cate_id": "202027304",
+            "match_score": "1.0000001111620804E-6",
+            "match_name": "default2i",
+            "deduction_flag": "0",
+            "XyhBucketInfo": "rec",
+            "user_id": "3371022660",
+            "labelBucketId": "15",
+            "serviceUtParams": "[{\"arg1\":\"46_tag_r2_1291\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"热销第5名\"}},{\"arg1\":\"46_tag_r3_1047\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"2人小刀价\"}},{\"arg1\":\"46_tag_r3_9\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"237人想要\"}},{\"arg1\":\"46_tag_r1_13\",\"args\":{\"LabelSystem2.0\":\"1\",\"content\":\"freeShippingIcon\"}}]"
+          }
+        },
+        "cardType": 1003
+      }
+    ],
+    "totalCount": 3,
+    "nextPage": false
+  }
+}

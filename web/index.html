@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>xianyu-radar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <header class="top">
+    <div class="brand-block">
+      <p class="brand">xianyu-radar</p>
+      <p class="tagline">从已验证商品出发，观察同类卖家，发现下一轮实验候选</p>
+    </div>
+    <div class="top-right">
+      <div class="env-switch" id="envSwitch">
+        <button type="button" class="env-btn" data-env="prod">prod</button>
+        <button type="button" class="env-btn" data-env="demo">demo</button>
+      </div>
+      <div class="auth-pill" id="authPill">检查登录态…</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel hero-stats" id="stats">
+      <div class="stat"><span class="n" id="sSellers">—</span><span class="l">监控商家</span></div>
+      <div class="stat"><span class="n" id="sItems">—</span><span class="l">商品记录</span></div>
+      <div class="stat"><span class="n" id="sCands">—</span><span class="l">候选商品</span></div>
+      <div class="stat"><span class="n" id="sEvents">—</span><span class="l">24h 事件</span></div>
+    </section>
+
+    <section class="panel cookie-panel" id="cookiePanel">
+      <div class="panel-head">
+        <h2>粘贴 Cookie</h2>
+        <span class="cookie-status" id="cookieStatus">未检测</span>
+      </div>
+      <p class="hint">
+        从浏览器已登录的 goofish / 闲鱼页复制 Cookie。必须含 <code>_m_h5_tk</code>。
+        可直接贴整段 <code>a=1; _m_h5_tk=…</code>，或贴 JSON。
+        保存到当前环境 <code>data/&lt;env&gt;/state/default.json</code>。
+      </p>
+      <div class="cookie-format-tabs" role="tablist" aria-label="Cookie 格式">
+        <button type="button" class="fmt-btn active" data-fmt="raw">Cookie 字符串</button>
+        <button type="button" class="fmt-btn" data-fmt="json">JSON</button>
+      </div>
+      <textarea
+        id="cookieInput"
+        rows="6"
+        spellcheck="false"
+        placeholder="_m_h5_tk=xxxx_1710000000000; _m_h5_tk_enc=...; cookie2=..."
+      ></textarea>
+      <div class="actions-row">
+        <button type="button" id="btnPasteCookie">从剪贴板粘贴</button>
+        <button type="button" id="btnSaveCookie">保存 Cookie</button>
+        <button type="button" class="ghost" id="btnCheckCookie">检查 / 探测</button>
+        <button type="button" class="ghost" id="btnClearCookiePause">清除 auth 暂停</button>
+        <button type="button" class="ghost" id="btnClearCookieInput">清空输入</button>
+      </div>
+      <pre class="log" id="cookieLog"></pre>
+    </section>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="discover">发现</button>
+      <button class="tab" data-tab="pool">商家池</button>
+      <button class="tab" data-tab="candidates">候选</button>
+      <button class="tab" data-tab="events">事件</button>
+      <button class="tab" data-tab="auth">登录态（高级）</button>
+    </nav>
+
+    <section class="panel tab-panel active" id="tab-discover">
+      <h2>关键词发现</h2>
+      <p class="hint">输入已验证能卖的商品关键词，抽取卖家进入商家池。当前环境见右上角（真实请用 <strong>prod</strong>）。</p>
+      <form id="discoverForm" class="row-form">
+        <input name="keyword" type="text" placeholder="例如：某资料名称" required />
+        <label class="check"><input type="checkbox" name="offline" /> 离线夹具（仍写入 demo 库）</label>
+        <button type="submit">开始发现</button>
+      </form>
+      <div class="actions-row">
+        <button type="button" class="ghost" id="btnDemoLoop">离线闭环 → 只写 demo 库</button>
+        <button type="button" class="ghost" id="btnScanPool">扫描商家池（需真实 Cookie）</button>
+      </div>
+      <pre class="log" id="discoverLog"></pre>
+    </section>
+
+    <section class="panel tab-panel" id="tab-pool">
+      <div class="panel-head">
+        <h2>商家池</h2>
+        <label class="check"><input type="checkbox" id="poolAll" /> 显示全部状态</label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>seller_id</th><th>昵称</th><th>状态</th><th>来源关键词</th><th>操作</th></tr>
+          </thead>
+          <tbody id="poolBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel tab-panel" id="tab-candidates">
+      <div class="panel-head">
+        <h2>候选商品</h2>
+        <select id="candSince">
+          <option value="24h">过去 24 小时</option>
+          <option value="7d">过去 7 天</option>
+          <option value="">全部</option>
+        </select>
+      </div>
+      <div id="candList" class="cand-list"></div>
+    </section>
+
+    <section class="panel tab-panel" id="tab-events">
+      <div class="panel-head">
+        <h2>商品事件</h2>
+        <select id="evtSince">
+          <option value="24h">过去 24 小时</option>
+          <option value="7d">过去 7 天</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>时间</th><th>类型</th><th>卖家</th><th>商品</th><th>baseline</th></tr>
+          </thead>
+          <tbody id="evtBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel tab-panel" id="tab-auth">
+      <h2>登录态（高级）</h2>
+      <p class="hint">与上方「粘贴 Cookie」写入同一文件。此处适合粘贴完整 Asher / 扩展导出的 JSON 快照。</p>
+      <textarea id="sessionJson" rows="10" placeholder='{"cookies":[{"name":"_m_h5_tk","value":"..."}]}'></textarea>
+      <div class="actions-row">
+        <button type="button" id="btnSaveSession">保存会话 JSON</button>
+        <button type="button" class="ghost" id="btnCheckAuth">检查</button>
+        <button type="button" class="ghost" id="btnClearPause">清除 auth 暂停</button>
+      </div>
+      <pre class="log" id="authLog"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span>发现 ≠ 上架 · 成交 = 验证</span>
+    <a href="/docs" target="_blank" rel="noreferrer">API docs</a>
+  </footer>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>
