@@ -62,9 +62,30 @@ def run_loop(
     jitter_sec: float = DEFAULT_JITTER_SEC,
     max_rounds: int | None = None,
     on_result: Callable[[dict], None] | None = None,
-) -> None:
+    refresh_session: Callable[[Session], Session] | None = None,
+    on_notice: Callable[[str], None] | None = None,
+) -> Session:
+    """Run the pool scanner forever.
+
+    Broker leases expire; a Session loaded once at startup goes stale.
+    When ``refresh_session`` is provided, each round tries to obtain a
+    fresh session first. A successful refresh also clears the
+    ``auth_paused`` circuit breaker so a temporary auth failure no
+    longer stalls the loop forever.
+    """
+    notice = on_notice or (lambda msg: None)
     rounds = 0
     while True:
+        if refresh_session is not None and is_auth_paused(conn):
+            try:
+                refreshed = refresh_session(session)
+            except Exception as e:  # noqa: BLE001 - keep the loop alive
+                notice(f"session refresh failed: {e}")
+                refreshed = None
+            if refreshed is not None and refreshed.ok:
+                session = refreshed
+                clear_auth_paused(conn)
+                notice("session refreshed; auth_paused cleared")
         run_pool_once(conn, session, on_result=on_result)
         rounds += 1
         if max_rounds is not None and rounds >= max_rounds:
@@ -74,3 +95,4 @@ def run_loop(
         if is_auth_paused(conn):
             sleep_for = max(sleep_for, interval_sec * 3)
         time.sleep(sleep_for)
+    return session

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from xianyu_radar import __version__
 from xianyu_radar import config as cfg
-from xianyu_radar.auth.session import AuthError, load_session
+from xianyu_radar.auth.session import AuthError, Session, load_session
 from xianyu_radar.candidates.detector import list_candidates
 from xianyu_radar.config import (
     DEFAULT_JITTER_SEC,
@@ -278,6 +278,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"scheduler start env={cfg.RADAR_ENV} interval={args.interval}s "
         f"jitter={args.jitter}s auth_paused={is_auth_paused(conn)}"
     )
+
+    def _refresh_session(_old: Session) -> Session:
+        # load_session() re-leases from the broker (or re-reads the local
+        # session file) and never returns a stale cached lease.
+        return load_session(args.state)
+
     try:
         run_loop(
             conn,
@@ -290,6 +296,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 f"seller={r.get('seller_id')} status={r.get('status')} "
                 f"events={len(r.get('events') or [])}"
             ),
+            refresh_session=_refresh_session,
+            on_notice=print,
         )
     except KeyboardInterrupt:
         print("stopped")
