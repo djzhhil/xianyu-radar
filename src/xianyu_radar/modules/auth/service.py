@@ -22,7 +22,6 @@ def _session_view(session: Session, *, paused: bool) -> dict:
         "token_prefix": session.token[:8] + "...",
         "paused": paused,
         "looks_like_placeholder": session.looks_like_placeholder,
-        "env": cfg.RADAR_ENV,
         "hint": (
             "当前 Cookie 像测试占位符，真实扫描会失败。请粘贴 goofish 登录态。"
             if session.looks_like_placeholder else None
@@ -38,7 +37,6 @@ def session_status(conn: sqlite3.Connection) -> dict:
             "ok": False,
             "error": str(exc),
             "paused": is_auth_paused(conn),
-            "env": cfg.RADAR_ENV,
         }
 
 
@@ -58,7 +56,7 @@ def save_session(conn: sqlite3.Connection, payload: dict[str, Any], filename: st
 
 def clear_pause(conn: sqlite3.Connection) -> dict:
     clear_auth_paused(conn)
-    return {"ok": True, "paused": False, "env": cfg.RADAR_ENV}
+    return {"ok": True, "paused": False}
 
 
 def check_session(conn: sqlite3.Connection, session: Session, *, ping: bool = False) -> dict:

@@ -4,7 +4,7 @@ Used by `radar auth check` / all online commands.
 
 ## Cookie header (simplest)
 
-Save as `data/prod/state/default.json` for real scans, or `data/demo/state/default.json` for demo data:
+Save as `data/state/default.json`:
 
 ```json
 {

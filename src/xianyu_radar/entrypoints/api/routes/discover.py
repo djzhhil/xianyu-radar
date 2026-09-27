@@ -3,23 +3,22 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from xianyu_radar.entrypoints.api.deps import get_db, require_session
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
 from xianyu_radar.infrastructure.goofish.session import AuthError
-from xianyu_radar.config import ROOT_DIR
 from xianyu_radar.modules.discovery.service import discover_sellers
 
 router = APIRouter()
 
 
 class DiscoverBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     keyword: str = Field(..., min_length=1)
-    fixture: str | None = None
     no_enrich: bool = False
 
 
@@ -44,30 +43,19 @@ def _http_from_mtop(exc: MtopError) -> HTTPException:
 
 @router.post("")
 def discover(body: DiscoverBody, conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    fixture_path = None
-    session = None
-    if body.fixture:
-        path = Path(body.fixture)
-        if not path.is_absolute():
-            path = ROOT_DIR / path
-        if not path.exists():
-            raise HTTPException(status_code=400, detail=f"fixture not found: {path}")
-        fixture_path = str(path)
-    else:
-        session = require_session()
-        if session.looks_like_placeholder:
-            raise HTTPException(
-                status_code=400,
-                detail="Cookie 为测试占位符，无法在线发现。请粘贴真实 Cookie，或勾选离线夹具。",
-            )
+    session = require_session()
+    if session.looks_like_placeholder:
+        raise HTTPException(
+            status_code=400,
+            detail="Cookie 为测试占位符，无法在线发现。请粘贴真实 Cookie。",
+        )
 
     try:
         summary = discover_sellers(
             conn,
             body.keyword.strip(),
             session=session,
-            fixture_path=fixture_path,
-            enrich=not body.no_enrich and session is not None,
+            enrich=not body.no_enrich,
         )
     except AuthError as e:
         raise HTTPException(status_code=401, detail=str(e)) from e

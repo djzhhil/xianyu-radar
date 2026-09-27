@@ -11,9 +11,9 @@
 | `src/xianyu_radar/` | Python 程序源码。 |
 | `web/` | 浏览器页面：`index.html` 页面结构、`styles.css` 样式、`app.js` 发 HTTP 请求并展示结果。 |
 | `tests/` | 自动测试；`fixtures/` 是离线闲鱼响应样本。 |
-| `scripts/` | 数据隔离脚本与手动冒烟步骤。 |
+| `scripts/` | 手动冒烟步骤。 |
 | `docs/` | 当前代码地图和登录态格式说明。 |
-| `data/prod/`、`data/demo/` | 运行时的正式数据与演示数据；SQLite 数据库和 Cookie 文件在这里，不属于源码。 |
+| `data/` | 唯一的运行数据目录：`radar.sqlite3` 数据库、`state/` 登录态和 `debug/` 调试文件；不属于源码。 |
 | `PROJECT_ANALYSIS.md`、`SYSTEM_DESIGN.md`、`IMPLEMENTATION_PLAN.md`、`PROGRESS.md` | 项目分析、早期设计、实施计划和进度记录；具体代码位置以本文为准。 |
 
 ## 第二层：源码区域
@@ -37,7 +37,7 @@ src/xianyu_radar/
 │   ├── goofish/                闲鱼会话解析与 MTOP 请求
 │   ├── storage/                SQLite 连接、schema、商家数据和认证暂停状态
 │   └── item_identity.py        商品 ID 与 URL 的统一规则
-├── config.py                    环境、路径和扫描参数
+├── config.py                    数据路径和扫描参数
 ├── models.py                    业务链路传递的数据结构
 └── __init__.py                  包版本
 ```
@@ -54,21 +54,21 @@ src/xianyu_radar/
 | `routes/scan.py` | 扫描单个商家或整个商家池 | `scan/service.py`、`scan/runner.py` |
 | `routes/events.py` | 查看扫描产生的商品事件 | `scan/service.py` |
 | `routes/candidates.py` | 查看候选、改变候选审核状态 | `candidates/service.py` |
-| `routes/status.py`、`env.py`、`demo.py` | 系统概览、环境切换、离线演示；属于系统入口 | 系统查询或演示编排 |
+| `routes/status.py` | 健康检查与系统概览 | 系统查询 |
 
-`routes/` 按 HTTP 地址分文件，`modules/` 按业务能力分文件。这是两种不同维度：门牌负责接请求，业务区负责完成工作。`demo.py` 为演示而顺序调用发现与扫描；正常的单项业务路由只进入对应模块。
+`routes/` 按 HTTP 地址分文件，`modules/` 按业务能力分文件。这是两种不同维度：门牌负责接请求，业务区负责完成工作。
 
 ### 五块业务区内部
 
 | 目录 | 文件与职责 |
 | --- | --- |
 | `auth/` | `service.py`：登录态查看、保存、检查 MTOP 连通性、清除认证暂停。 |
-| `discovery/` | `service.py`：发现流程编排、写入发现记录和种子商品；`keyword_search.py`：调用搜索接口或读取搜索夹具；`item_parser.py`：解析搜索结果、提取卖家信息。 |
+| `discovery/` | `service.py`：发现流程编排、写入发现记录和种子商品；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。 |
 | `pool/` | `service.py`：商家列表与状态修改的业务入口。实际商家表读写由共用的 `infrastructure/storage/seller_repository.py` 完成。 |
 | `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
 | `candidates/` | `service.py`：候选列表与状态修改入口；`repository.py`：候选表查询、状态更新。 |
 
-`infrastructure/goofish/session.py` 从 Cookie JSON 建立会话；`mtop.py` 计算签名并访问闲鱼接口。`infrastructure/storage/db.py` 连接和初始化 SQLite，`schema.sql` 定义表，`seller_repository.py` 读写商家池相关表，`auth_state.py` 管理认证暂停标志，`isolate_env.py` 迁移演示数据。发现和扫描都需要闲鱼协议；发现、商家池和扫描都需要访问商家数据，所以这些代码放在共用区域。
+`infrastructure/goofish/session.py` 从 Cookie JSON 建立会话；`mtop.py` 计算签名并访问闲鱼接口。`infrastructure/storage/db.py` 连接和初始化 SQLite，`schema.sql` 定义表，`seller_repository.py` 读写商家池相关表，`auth_state.py` 管理认证暂停标志。发现和扫描都需要闲鱼协议；发现、商家池和扫描都需要访问商家数据，所以这些代码放在共用区域。
 
 ## 第三层：用户进入后会发生什么
 
@@ -92,11 +92,11 @@ flowchart LR
 
 ### 1. 保存或检查登录态
 
-`web/app.js` → `routes/auth.py` → `auth/service.py` → `infrastructure/goofish/session.py` 解析 Cookie；需要在线检查时再由 `infrastructure/goofish/mtop.py` 发请求。保存的会话文件在 `data/<env>/state/`，认证暂停标志在 SQLite 的 `meta` 表。
+`web/app.js` → `routes/auth.py` → `auth/service.py` → `infrastructure/goofish/session.py` 解析 Cookie；需要在线检查时再由 `infrastructure/goofish/mtop.py` 发请求。保存的会话文件在 `data/state/`，认证暂停标志在 SQLite 的 `meta` 表。
 
 ### 2. 发现商家
 
-`web/app.js` → `routes/discover.py` → `discovery/service.py` → `keyword_search.py` → `item_parser.py`。在线搜索使用共用的 MTOP 客户端；离线模式读取 `tests/fixtures/`。发现流程再使用 `storage/seller_repository.py` 写入 `sellers`、`seller_pool_entries` 和种子 `items`，并记录 `watch_keywords`、`discovery_runs`。本步结束，扫描尚未被直接调用。
+`web/app.js` → `routes/discover.py` → `discovery/service.py` → `keyword_search.py` → `item_parser.py`。搜索使用共用的 MTOP 客户端。只有取得可供店铺接口使用的数字卖家 ID，发现流程才使用 `storage/seller_repository.py` 写入 `sellers`、`seller_pool_entries` 和种子 `items`；无法识别卖家的搜索结果计入 `skipped_no_seller`，不会出现在商家池。遇到详情接口的人机验证时，路由返回 403，`discovery_runs` 标为 `failed`。本步不调用扫描模块。
 
 ### 3. 管理商家池
 
@@ -108,7 +108,7 @@ flowchart LR
 
 商家池：`routes/scan.py` → `scan/runner.py` → 共用的商家仓库读取 `watching` 商家 → 对每个商家调用同模块的 `scan/service.py`。循环调度也是 `runner.py`，并由 CLI 触发。
 
-离线夹具扫描同样进入 `scan/service.py`，只省去在线拉取。发现阶段已有种子商品时，第一次店铺扫描不一定是完整基线；这取决于库里是否已有该商家的商品当前态。
+自动测试用 `tests/fixtures/` 的样本模拟闲鱼响应，在临时数据库中验证解析和扫描；对外 API 只使用当前会话发起真实请求。发现阶段已有种子商品时，第一次店铺扫描不一定是完整基线；这取决于库里是否已有该商家的商品当前态。
 
 ### 5. 查看候选与事件
 

@@ -78,7 +78,7 @@ def load_session(path: Path | str | None = None) -> Session:
             if not candidates:
                 raise AuthError(
                     f"No session file found under {cfg.STATE_DIR}. "
-                    "Place a cookie JSON at data/<env>/state/default.json"
+                    "Place a cookie JSON at data/state/default.json"
                 )
             path = candidates[0]
     path = Path(path)

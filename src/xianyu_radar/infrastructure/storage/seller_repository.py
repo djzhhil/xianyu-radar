@@ -115,12 +115,14 @@ def add_seller_from_discovery(
 
 
 def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> list[dict]:
+    # A placeholder seller exists only to satisfy the items foreign key; it is not in the pool.
+    membership = "EXISTS (SELECT 1 FROM seller_pool_entries p WHERE p.seller_id=s.seller_id AND p.active=1)"
     if status:
         rows = conn.execute(
             "SELECT s.*, "
             "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
             " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords "
-            "FROM sellers s WHERE s.status=? ORDER BY s.last_seen_at DESC",
+            f"FROM sellers s WHERE {membership} AND s.status=? ORDER BY s.last_seen_at DESC",
             (status,),
         ).fetchall()
     else:
@@ -128,7 +130,7 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
             "SELECT s.*, "
             "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
             " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords "
-            "FROM sellers s ORDER BY s.last_seen_at DESC"
+            f"FROM sellers s WHERE {membership} ORDER BY s.last_seen_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 

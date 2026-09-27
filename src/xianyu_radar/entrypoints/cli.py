@@ -6,19 +6,18 @@ import argparse
 import json
 import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from xianyu_radar import __version__
 from xianyu_radar import config as cfg
 from xianyu_radar.infrastructure.goofish.session import AuthError, load_session
 from xianyu_radar.modules.candidates.service import list_candidates
 from xianyu_radar.config import ensure_data_dirs
-from xianyu_radar.modules.discovery.keyword_search import search, search_from_fixture
+from xianyu_radar.modules.discovery.keyword_search import search
 from xianyu_radar.modules.discovery.service import discover_sellers
 from xianyu_radar.infrastructure.storage.auth_state import clear_auth_paused, is_auth_paused
 from xianyu_radar.modules.scan.runner import run_loop, run_pool_once
-from xianyu_radar.modules.scan.fetcher import get_seller_items, get_seller_items_from_payload
-from xianyu_radar.modules.scan.service import apply_scan_result, scan_seller
+from xianyu_radar.modules.scan.fetcher import get_seller_items
+from xianyu_radar.modules.scan.service import scan_seller
 from xianyu_radar.infrastructure.storage.seller_repository import list_pool, set_seller_status
 from xianyu_radar.infrastructure.storage.db import get_schema_version, init_db, table_names
 
@@ -32,7 +31,6 @@ def cmd_init_db(_: argparse.Namespace) -> int:
     version = get_schema_version(conn)
     tables = sorted(table_names(conn))
     conn.close()
-    print(f"env={cfg.RADAR_ENV}")
     print(f"db={cfg.DB_PATH}")
     print(f"schema_version={version}")
     print(f"tables={', '.join(tables)}")
@@ -83,15 +81,12 @@ def cmd_auth_check(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    if args.dry_parse_fixture:
-        items = search_from_fixture(args.dry_parse_fixture)
-    else:
-        try:
-            session = load_session(args.state)
-        except AuthError as e:
-            print(f"AUTH_FAIL: {e}")
-            return 1
-        items = search(args.keyword, session)
+    try:
+        session = load_session(args.state)
+    except AuthError as e:
+        print(f"AUTH_FAIL: {e}")
+        return 1
+    items = search(args.keyword, session)
     for it in items:
         print(
             f"{it.item_id}\t{it.price}\t{it.seller_id or '-'}\t{it.title[:60]}"
@@ -102,18 +97,16 @@ def cmd_search(args: argparse.Namespace) -> int:
 
 def cmd_discover(args: argparse.Namespace) -> int:
     conn = _conn()
-    session = None
-    if not args.fixture:
-        try:
-            session = load_session(args.state)
-        except AuthError as e:
-            print(f"AUTH_FAIL: {e}")
-            return 1
+    try:
+        session = load_session(args.state)
+    except AuthError as e:
+        conn.close()
+        print(f"AUTH_FAIL: {e}")
+        return 1
     summary = discover_sellers(
         conn,
         args.keyword,
         session=session,
-        fixture_path=args.fixture,
         enrich=not args.no_enrich,
     )
     conn.close()
@@ -149,16 +142,12 @@ def cmd_pool_set(args: argparse.Namespace) -> int:
 
 
 def cmd_fetch_seller(args: argparse.Namespace) -> int:
-    if args.fixture:
-        payload = json.loads(Path(args.fixture).read_text(encoding="utf-8"))
-        items = get_seller_items_from_payload(payload)
-    else:
-        try:
-            session = load_session(args.state)
-        except AuthError as e:
-            print(f"AUTH_FAIL: {e}")
-            return 1
-        items = get_seller_items(session, args.seller_id)
+    try:
+        session = load_session(args.state)
+    except AuthError as e:
+        print(f"AUTH_FAIL: {e}")
+        return 1
+    items = get_seller_items(session, args.seller_id)
     if args.out == "json":
         print(
             json.dumps(
@@ -176,19 +165,14 @@ def cmd_fetch_seller(args: argparse.Namespace) -> int:
 
 def cmd_scan_seller(args: argparse.Namespace) -> int:
     conn = _conn()
-    if args.fixture:
-        payload = json.loads(Path(args.fixture).read_text(encoding="utf-8"))
-        items = get_seller_items_from_payload(payload)
-        result = apply_scan_result(
-            conn, args.seller_id, items, keyword_hints=args.keyword.split(",") if args.keyword else None
-        )
-    else:
-        try:
-            session = load_session(args.state)
-        except AuthError as e:
-            print(f"AUTH_FAIL: {e}")
-            return 1
-        result = scan_seller(conn, session, args.seller_id)
+    try:
+        session = load_session(args.state)
+    except AuthError as e:
+        conn.close()
+        print(f"AUTH_FAIL: {e}")
+        return 1
+    hints = [k.strip() for k in (args.keyword or "").split(",") if k.strip()] or None
+    result = scan_seller(conn, session, args.seller_id, keyword_hints=hints)
     conn.close()
     events = result.get("events") or []
     print(f"scan_id={result.get('scan_id')} status={result.get('status')}")
@@ -323,15 +307,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_check.set_defaults(func=cmd_auth_check)
 
     p = sub.add_parser("search", help="Keyword search")
-    p.add_argument("--keyword", "-k", default="")
+    p.add_argument("--keyword", "-k", required=True)
     p.add_argument("--state", default=None)
-    p.add_argument("--dry-parse-fixture", default=None, help="Parse fixture offline")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("discover", help="Search + build seller pool")
     p.add_argument("--keyword", "-k", required=True)
     p.add_argument("--state", default=None)
-    p.add_argument("--fixture", default=None, help="Offline search fixture")
     p.add_argument("--no-enrich", action="store_true")
     p.set_defaults(func=cmd_discover)
 
@@ -348,14 +330,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("fetch-seller", help="Fetch seller on-sale items")
     p.add_argument("seller_id")
     p.add_argument("--state", default=None)
-    p.add_argument("--fixture", default=None)
     p.add_argument("--out", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_fetch_seller)
 
     p = sub.add_parser("scan-seller", help="Fetch + snapshot + diff one seller")
     p.add_argument("seller_id")
     p.add_argument("--state", default=None)
-    p.add_argument("--fixture", default=None)
     p.add_argument("--keyword", default=None, help="Comma-separated keyword hints for candidates")
     p.set_defaults(func=cmd_scan_seller)
 
@@ -386,18 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--reload", action="store_true")
-    p.add_argument("--env", default="prod", help="prod | demo")
     p.set_defaults(func=cmd_serve)
-
-    p = sub.add_parser("env", help="Show or switch data environment")
-    env_sub = p.add_subparsers(dest="env_cmd", required=True)
-    p_show = env_sub.add_parser("show", help="Show active env paths")
-    p_show.set_defaults(func=cmd_env_show)
-    p_use = env_sub.add_parser("use", help="Switch env for subsequent CLI in this process")
-    p_use.add_argument("name", choices=["prod", "demo"])
-    p_use.set_defaults(func=cmd_env_use)
-    p_iso = env_sub.add_parser("isolate", help="Move legacy demo data into data/demo, init empty prod")
-    p_iso.set_defaults(func=cmd_env_isolate)
 
     return parser
 
@@ -406,52 +375,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from xianyu_radar.entrypoints.api.server import main as serve_main
 
     serve_main(
-        ["--host", args.host, "--port", str(args.port), "--env", args.env]
+        ["--host", args.host, "--port", str(args.port)]
         + (["--reload"] if args.reload else [])
     )
-    return 0
-
-
-def cmd_env_show(_: argparse.Namespace) -> int:
-    from xianyu_radar import config as cfg
-    from xianyu_radar.config import paths_for
-
-    print(f"active={cfg.RADAR_ENV}")
-    print(f"db={cfg.DB_PATH}")
-    print(f"state={cfg.STATE_DIR}")
-    for name in ("prod", "demo"):
-        p = paths_for(name)
-        print(f"{name}_db={p['db_path']} exists={p['db_path'].exists()}")
-    return 0
-
-
-def cmd_env_use(args: argparse.Namespace) -> int:
-    from xianyu_radar.config import apply_env
-    from xianyu_radar.infrastructure.storage.db import init_db
-
-    env = apply_env(args.name)
-    init_db().close()
-    print(f"active={env}")
-    return 0
-
-
-def cmd_env_isolate(_: argparse.Namespace) -> int:
-    import json
-
-    from xianyu_radar.infrastructure.storage.isolate_env import isolate_demo_data
-
-    result = isolate_demo_data()
-    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    # search requires keyword unless fixture
-    if getattr(args, "command", None) == "search":
-        if not args.dry_parse_fixture and not args.keyword:
-            parser.error("search requires --keyword or --dry-parse-fixture")
     code = args.func(args)
     sys.exit(code)
 

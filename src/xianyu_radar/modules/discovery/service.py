@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 
 from xianyu_radar.infrastructure.goofish.mtop import MtopError, call_mtop
-from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.infrastructure.goofish.session import AuthError, Session
 from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
-from xianyu_radar.modules.discovery.keyword_search import search, search_from_fixture
+from xianyu_radar.modules.discovery.keyword_search import search
 from xianyu_radar.models import SeedItem
 from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery, upsert_seed_item
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -36,7 +39,15 @@ def enrich_seller_id(session: Session, item: SeedItem) -> SeedItem:
         return item
     try:
         detail = fetch_detail(session, item.item_id)
-    except (MtopError, Exception):
+    except MtopError as exc:
+        if "FAIL_SYS_USER_VALIDATE" in str(exc.ret) or "x5sec" in str(exc).lower():
+            raise
+        logger.warning("无法补全商品 %s 的卖家 ID：%s", item.item_id, exc)
+        return item
+    except AuthError:
+        raise
+    except Exception:
+        logger.exception("补全商品 %s 的卖家 ID 时发生异常", item.item_id)
         return item
     sid = extract_seller_id(detail)
     nick = extract_seller_nick(detail)
@@ -51,8 +62,7 @@ def discover_sellers(
     conn: sqlite3.Connection,
     keyword: str,
     *,
-    session: Session | None = None,
-    fixture_path: str | None = None,
+    session: Session,
     enrich: bool = True,
     max_enrich: int = 30,
 ) -> dict:
@@ -68,25 +78,27 @@ def discover_sellers(
     )
     conn.commit()
 
-    if fixture_path:
-        items = search_from_fixture(fixture_path)
-    else:
-        if session is None:
-            raise ValueError("session required for online discover")
-        items = search(keyword, session)
-
     enriched = 0
     skipped_no_seller = 0
     new_sellers = 0
 
-    if enrich and session is not None:
-        for item in items[:max_enrich]:
-            if item.seller_id:
-                continue
-            before = item.seller_id
-            enrich_seller_id(session, item)
-            if item.seller_id and item.seller_id != before:
-                enriched += 1
+    try:
+        items = search(keyword, session)
+        if enrich:
+            for item in items[:max_enrich]:
+                if item.seller_id:
+                    continue
+                before = item.seller_id
+                enrich_seller_id(session, item)
+                if item.seller_id and item.seller_id != before:
+                    enriched += 1
+    except Exception:
+        conn.execute(
+            "UPDATE discovery_runs SET finished_at=?, status='failed' WHERE id=?",
+            (_now(), run_id),
+        )
+        conn.commit()
+        raise
 
     # Ensure keyword registered
     conn.execute(
@@ -96,7 +108,6 @@ def discover_sellers(
     )
 
     for item in items:
-        upsert_seed_item(conn, item, keyword=keyword)
         if not item.seller_id:
             skipped_no_seller += 1
             continue
@@ -109,6 +120,7 @@ def discover_sellers(
         )
         if created:
             new_sellers += 1
+        upsert_seed_item(conn, item, keyword=keyword)
 
     conn.execute(
         "UPDATE discovery_runs SET finished_at=?, item_count=?, seller_count=?, status=? WHERE id=?",

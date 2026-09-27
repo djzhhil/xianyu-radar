@@ -18,8 +18,22 @@ def _price_from_ex_content(ex: dict) -> str:
     return str(price_parts)
 
 
+def _seller_id_from_search(args: dict, ex: dict) -> str | None:
+    """Only numeric seller IDs can be used by the shop-list API."""
+    jump = ex.get("jump2XianYuHao") or {}
+    jump_args = ((jump.get("clickParam") or {}).get("args") or {})
+    for source in (args, jump_args):
+        for key in ("userId", "sellerId", "seller_id", "user_id", "uid"):
+            value = source.get(key)
+            if value is not None:
+                candidate = str(value).strip()
+                if candidate.isdigit():
+                    return candidate
+    return None
+
+
 def parse_search_results(payload: dict[str, Any]) -> list[SeedItem]:
-    """Parse mtop.taobao.idlemtopsearch.pc.search response (or fixture)."""
+    """Parse mtop.taobao.idlemtopsearch.pc.search response."""
     result_list = (payload.get("data") or {}).get("resultList") or []
     items: list[SeedItem] = []
     for entry in result_list:
@@ -50,14 +64,7 @@ def parse_search_results(payload: dict[str, Any]) -> list[SeedItem]:
         raw_link = main.get("targetUrl") or ""
         url = normalize_goofish_url(raw_link, item_id)
         seller_nick = ex.get("userNickName") or None
-        # Rare: userId in args
-        seller_id = extract_item_id(args.get("userId"), args.get("sellerId"))
-        # extract_item_id is for items; seller ids are also numeric strings
-        for key in ("userId", "sellerId", "uid"):
-            val = args.get(key)
-            if val is not None and str(val).isdigit():
-                seller_id = str(val)
-                break
+        seller_id = _seller_id_from_search(args, ex)
 
         items.append(
             SeedItem(

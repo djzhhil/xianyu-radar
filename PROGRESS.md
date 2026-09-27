@@ -61,7 +61,7 @@
 - **Notes:** `scripts/mvp_smoke.md`, README, session docs; offline smoke verified candidates
 
 ## Suite
-- **pytest:** 27 passed (incl. API TestClient 联调)
+- **pytest:** 33 passed（2026-09-28，含卖家 ID 解析、人机验证与商家池回归测试）
 - **MVP status:** COMPLETE (Phase 4)
 - **Web UI:** FastAPI + `web/` · `radar serve --port 8765`
-- **Live smoke:** `/api/demo/offline-loop` → candidates=1 · static assets OK
+- **API 验证:** 发现 → 商家池 → 扫描 → 候选与事件，在临时数据库和模拟响应下通过；真实闲鱼请求尚需有效 Cookie

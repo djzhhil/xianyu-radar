@@ -20,14 +20,15 @@ router = APIRouter()
 
 @router.get("/health")
 def health() -> dict:
-    return {"ok": True, "version": __version__, "env": cfg.RADAR_ENV}
+    return {"ok": True, "version": __version__}
 
 
 @router.get("/status")
 def status(conn: sqlite3.Connection = Depends(get_db)) -> dict:
     session = try_load_session()
     sellers = conn.execute(
-        "SELECT COUNT(*) AS c FROM sellers WHERE status='watching'"
+        "SELECT COUNT(*) AS c FROM sellers s WHERE s.status='watching' "
+        "AND EXISTS (SELECT 1 FROM seller_pool_entries p WHERE p.seller_id=s.seller_id AND p.active=1)"
     ).fetchone()["c"]
     items = conn.execute("SELECT COUNT(*) AS c FROM items").fetchone()["c"]
     candidates = conn.execute("SELECT COUNT(*) AS c FROM candidates").fetchone()["c"]
@@ -53,7 +54,6 @@ def status(conn: sqlite3.Connection = Depends(get_db)) -> dict:
         auth["hint"] = "auth 已暂停（上次会话失效）。可清除暂停或更新 Cookie。"
     return {
         "version": __version__,
-        "env": cfg.RADAR_ENV,
         "schema_version": get_schema_version(conn),
         "db_path": str(cfg.DB_PATH),
         "auth": auth,

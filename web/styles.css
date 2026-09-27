@@ -83,31 +83,6 @@ html, body {
   align-items: flex-end;
   gap: 0.55rem;
 }
-.env-switch {
-  display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.2rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(0,0,0,0.25);
-}
-.env-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--mist);
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.env-btn.active {
-  background: var(--copper);
-  color: #1a1008;
-}
-.env-btn.prod-active.active { background: #3d9a6a; color: #06150e; }
 .auth-pill {
   margin-top: 0;
   padding: 0.45rem 0.85rem;

@@ -5,8 +5,6 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-import json
 
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
 from xianyu_radar.infrastructure.goofish.session import AuthError, Session
@@ -17,7 +15,6 @@ from xianyu_radar.modules.scan.history import write_snapshots
 from xianyu_radar.modules.scan.item_repository import load_active_items, mark_removed, upsert_seller_item
 from xianyu_radar.models import ItemEvent, SellerItem
 from xianyu_radar.modules.scan.fetcher import get_seller_items
-from xianyu_radar.modules.scan.fetcher import get_seller_items_from_payload
 from xianyu_radar.modules.scan.events import list_events
 
 
@@ -55,7 +52,7 @@ def apply_scan_result(
     keyword_hints: list[str] | None = None,
 ) -> dict:
     """
-    Apply an already-fetched catalog to DB (testable offline).
+    Apply an already-fetched catalog to DB.
     Empty current → failed empty, no REMOVED.
     """
     scan_id = scan_id or f"scan_{uuid.uuid4().hex[:12]}"
@@ -171,25 +168,3 @@ def scan_seller(
     return apply_scan_result(
         conn, seller_id, items, scan_id=scan_id, keyword_hints=keyword_hints
     )
-
-
-def scan_from_fixture(
-    conn: sqlite3.Connection,
-    seller_id: str,
-    fixture_path: Path,
-    *,
-    keyword_hints: list[str] | None = None,
-    extra_items: list[dict] | None = None,
-) -> dict:
-    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
-    items = get_seller_items_from_payload(payload)
-    for raw in extra_items or []:
-        items.append(
-            SellerItem(
-                item_id=str(raw["item_id"]),
-                title=str(raw.get("title") or ""),
-                price=str(raw.get("price") or ""),
-                url=str(raw.get("url") or f"https://www.goofish.com/item?id={raw['item_id']}"),
-            )
-        )
-    return apply_scan_result(conn, seller_id, items, keyword_hints=keyword_hints)

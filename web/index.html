@@ -17,10 +17,6 @@
       <p class="tagline">从已验证商品出发，观察同类卖家，发现下一轮实验候选</p>
     </div>
     <div class="top-right">
-      <div class="env-switch" id="envSwitch">
-        <button type="button" class="env-btn" data-env="prod">prod</button>
-        <button type="button" class="env-btn" data-env="demo">demo</button>
-      </div>
       <div class="auth-pill" id="authPill">检查登录态…</div>
     </div>
   </header>
@@ -41,7 +37,7 @@
       <p class="hint">
         从浏览器已登录的 goofish / 闲鱼页复制 Cookie。必须含 <code>_m_h5_tk</code>。
         可直接贴整段 <code>a=1; _m_h5_tk=…</code>，或贴 JSON。
-        保存到当前环境 <code>data/&lt;env&gt;/state/default.json</code>。
+        保存到 <code>data/state/default.json</code>。
       </p>
       <div class="cookie-format-tabs" role="tablist" aria-label="Cookie 格式">
         <button type="button" class="fmt-btn active" data-fmt="raw">Cookie 字符串</button>
@@ -73,14 +69,12 @@
 
     <section class="panel tab-panel active" id="tab-discover">
       <h2>关键词发现</h2>
-      <p class="hint">输入已验证能卖的商品关键词，抽取卖家进入商家池。当前环境见右上角（真实请用 <strong>prod</strong>）。</p>
+      <p class="hint">输入已验证能卖的商品关键词，抽取卖家进入商家池。</p>
       <form id="discoverForm" class="row-form">
         <input name="keyword" type="text" placeholder="例如：某资料名称" required />
-        <label class="check"><input type="checkbox" name="offline" /> 离线夹具（仍写入 demo 库）</label>
         <button type="submit">开始发现</button>
       </form>
       <div class="actions-row">
-        <button type="button" class="ghost" id="btnDemoLoop">离线闭环 → 只写 demo 库</button>
         <button type="button" class="ghost" id="btnScanPool">扫描商家池（需真实 Cookie）</button>
       </div>
       <pre class="log" id="discoverLog"></pre>

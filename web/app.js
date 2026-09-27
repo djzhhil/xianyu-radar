@@ -42,26 +42,25 @@ async function refreshStatus() {
   $("#sEvents").textContent = s.counts.events_24h;
   const pill = $("#authPill");
   const cookieStatus = $("#cookieStatus");
-  const envLabel = s.env || "?";
   if (s.auth.ok) {
     if (s.auth.looks_like_placeholder) {
-      pill.textContent = `${envLabel} · 占位 Cookie（不能真扫）`;
+      pill.textContent = "占位 Cookie（不能真扫）";
       pill.className = "auth-pill bad";
       cookieStatus.textContent = "占位 Cookie";
       cookieStatus.className = "cookie-status bad";
     } else if (s.auth.paused) {
-      pill.textContent = `${envLabel} · 已登录 · auth 已暂停`;
+      pill.textContent = "已登录 · auth 已暂停";
       pill.className = "auth-pill bad";
       cookieStatus.textContent = "已暂停";
       cookieStatus.className = "cookie-status warn";
     } else {
-      pill.textContent = `${envLabel} · 已登录 · ${s.auth.cookie_count} cookies`;
+      pill.textContent = `已登录 · ${s.auth.cookie_count} cookies`;
       pill.className = "auth-pill ok";
       cookieStatus.textContent = `已保存 · ${s.auth.cookie_count} 项`;
       cookieStatus.className = "cookie-status ok";
     }
   } else {
-    pill.textContent = `${envLabel} · 未登录（点此粘贴 Cookie）`;
+    pill.textContent = "未登录（点此粘贴 Cookie）";
     pill.className = "auth-pill bad";
     cookieStatus.textContent = "未登录";
     cookieStatus.className = "cookie-status bad";
@@ -69,10 +68,6 @@ async function refreshStatus() {
   if (s.auth.hint) {
     console.info("[auth]", s.auth.hint);
   }
-  $$(".env-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.env === s.env);
-    b.classList.toggle("prod-active", s.env === "prod" && b.dataset.env === "prod");
-  });
   return s;
 }
 
@@ -157,7 +152,7 @@ function setupCookiePanel() {
       if (r.looks_like_placeholder) {
         toast("已保存，但是测试占位 Cookie");
       } else {
-        toast("Cookie 已保存到当前环境");
+        toast("Cookie 已保存");
       }
       await refreshStatus();
     } catch (e) {
@@ -252,7 +247,7 @@ async function refreshCandidates() {
   const list = $("#candList");
   list.innerHTML = "";
   if (!data.candidates.length) {
-    list.innerHTML = `<p class="hint">暂无候选。可点「跑通离线闭环 Demo」生成一条。</p>`;
+    list.innerHTML = `<p class="hint">暂无候选。请先发现并扫描商家。</p>`;
     return;
   }
   for (const c of data.candidates) {
@@ -329,51 +324,16 @@ function setupTabs() {
 }
 
 function setupForms() {
-  $$(".env-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      try {
-        await api("/api/env", {
-          method: "POST",
-          body: JSON.stringify({ env: btn.dataset.env }),
-        });
-        toast(`已切换到 ${btn.dataset.env}`);
-        await refreshAll();
-      } catch (e) {
-        toast(e.message);
-      }
-    });
-  });
-
   $("#discoverForm").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const fd = new FormData(ev.target);
     const keyword = String(fd.get("keyword") || "").trim();
-    const offline = !!fd.get("offline");
     try {
-      const body = { keyword, no_enrich: offline };
-      if (offline) body.fixture = "tests/fixtures/search_results.json";
+      const body = { keyword };
       const r = await api("/api/discover", { method: "POST", body: JSON.stringify(body) });
       setLog("#discoverLog", r);
-      toast(`发现完成 · 商品 ${r.item_count} · 新卖家 ${r.new_sellers}`);
+      toast(`发现完成 · 商品 ${r.item_count} · 新卖家 ${r.new_sellers} · 未识别卖家 ${r.skipped_no_seller}`);
       await refreshAll();
-    } catch (e) {
-      setLog("#discoverLog", e.message);
-      toast(e.message);
-    }
-  });
-
-  $("#btnDemoLoop").addEventListener("click", async () => {
-    try {
-      const r = await api("/api/demo/offline-loop", {
-        method: "POST",
-        body: JSON.stringify({ keyword: "Sony A7M4", seller_id: "DEMO_SELLER" }),
-      });
-      setLog("#discoverLog", r);
-      toast("已写入 demo 库（不会污染 prod）");
-      // switch UI to demo so results are visible
-      await api("/api/env", { method: "POST", body: JSON.stringify({ env: "demo" }) });
-      await refreshAll();
-      $$(".tab").find((t) => t.dataset.tab === "candidates")?.click();
     } catch (e) {
       setLog("#discoverLog", e.message);
       toast(e.message);

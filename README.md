@@ -27,32 +27,27 @@ pytest -q
 ## Web UI（前后端联调）
 
 ```bash
-radar serve --host 127.0.0.1 --port 8765 --env prod
+radar serve --host 127.0.0.1 --port 8765
 # 打开 http://127.0.0.1:8765
 # API 文档 http://127.0.0.1:8765/docs
 ```
 
-右上角可切换 **prod**（真实） / **demo**（离线夹具库）。
-
-- 无真实 Cookie：切到 demo，点 **「离线闭环 → 只写 demo 库」**
-- 真实扫描：在 prod 的「登录态」粘贴含 `_m_h5_tk` 的 Cookie（不要用 `tokensecret` 测试占位）
+真实扫描需要在「登录态」粘贴含 `_m_h5_tk` 的 Cookie（不要用 `tokensecret` 测试占位）。
+如果发现时提示闲鱼人机验证，请先在浏览器完成验证并更新 Cookie；未取得真实数字卖家 ID 的搜索商品不会进入商家池。
 
 数据目录：
 
 ```text
-data/prod/   # 真实运行
-data/demo/   # 离线 Demo
+data/radar.sqlite3       # 唯一的业务数据库
+data/state/default.json  # 登录态
+data/debug/               # 调试文件
 ```
 
-首次隔离旧扁平数据：
-
-```bash
-radar env isolate
-```
+从旧版升级时，将原 `data/prod/radar.sqlite3` 和 `data/prod/state/` 中的文件移到上述位置；不要覆盖已经存在的目标文件。本工作区的数据已完成迁移。
 
 ## 登录态
 
-将 Cookie 放到 `data/<env>/state/default.json`（见 `docs/session_format.md`）。
+将 Cookie 放到 `data/state/default.json`（见 `docs/session_format.md`）。
 必须包含 `_m_h5_tk`。也可在 Web「登录态」页粘贴保存。
 
 ```bash
@@ -83,7 +78,7 @@ radar events --since 24h
 radar run --interval 90 --jitter 30
 ```
 
-离线/夹具：`scripts/mvp_smoke.md`
+自动测试与手动验证步骤：`scripts/mvp_smoke.md`
 
 ## 代码区域
 

@@ -77,7 +77,7 @@
 - `discovery/keyword_search.py`
 - `discovery/item_parser.py`（列表字段映射）
 - fixtures：从 Asher `tests/fixtures/search_results.json` **脱敏拷贝** 一份到我们 `tests/fixtures/`
-- CLI：`radar search --keyword K --dry-parse-fixture`（离线）与 `radar search --keyword K`（在线，需 auth）
+- CLI：`radar search --keyword K`（在线，需 auth）；夹具只由 `tests/` 中的自动测试读取
 
 **涉及文件：** `discovery/*`, fixtures, cli  
 **验收标准：**
