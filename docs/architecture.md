@@ -96,7 +96,7 @@ flowchart LR
 
 ### 2. 发现商家
 
-`web/app.js` → `routes/discover.py` → `discovery/service.py` → `keyword_search.py` → `item_parser.py`。搜索使用共用的 MTOP 客户端。只有取得可供店铺接口使用的数字卖家 ID，发现流程才使用 `storage/seller_repository.py` 写入 `sellers`、`seller_pool_entries` 和种子 `items`；无法识别卖家的搜索结果计入 `skipped_no_seller`，不会出现在商家池。遇到详情接口的人机验证时，路由返回 403，`discovery_runs` 标为 `failed`。本步不调用扫描模块。
+`web/app.js` → `routes/discover.py` → `discovery/service.py` → `keyword_search.py` → `item_parser.py`。搜索使用共用的 MTOP 客户端。解析器从搜索结果中读取明确的数字卖家 ID，也从商品图片地址提取数字候选值。图片候选值只在当前搜索结果中没有跨卖家复用、同一卖家没有多个不同候选值时作为卖家 ID 使用；这一步只检查内存中的搜索结果，不请求商家商品列表。同一搜索卖家的其他商品可关联到这个 ID。仍未识别的商品沿用详情接口补全；遇到人机验证时，如果已有识别的商家，就保留这些商家并在响应中标明 `validation_required`，否则返回 403。无法识别卖家的搜索结果计入 `skipped_no_seller`。本步不调用扫描模块。
 
 ### 3. 管理商家池
 

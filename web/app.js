@@ -332,7 +332,8 @@ function setupForms() {
       const body = { keyword };
       const r = await api("/api/discover", { method: "POST", body: JSON.stringify(body) });
       setLog("#discoverLog", r);
-      toast(`发现完成 · 商品 ${r.item_count} · 新卖家 ${r.new_sellers} · 未识别卖家 ${r.skipped_no_seller}`);
+      const validationNote = r.validation_required ? " · 闲鱼需要人机验证，已保留确认的卖家" : "";
+      toast(`发现完成 · 商品 ${r.item_count} · 新卖家 ${r.new_sellers} · 未识别卖家 ${r.skipped_no_seller}${validationNote}`);
       await refreshAll();
     } catch (e) {
       setLog("#discoverLog", e.message);

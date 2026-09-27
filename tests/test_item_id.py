@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from xianyu_radar.modules.discovery.item_parser import extract_seller_id
+from xianyu_radar.modules.discovery.item_parser import (
+    extract_seller_id,
+    image_seller_id_candidate,
+)
 from xianyu_radar.modules.discovery.keyword_search import search_from_payload
 from xianyu_radar.infrastructure.item_identity import extract_item_id
 from xianyu_radar.modules.scan.shop_parser import parse_shop_card_list
@@ -28,7 +31,7 @@ def test_parse_search_fixture() -> None:
     assert items[0].price
 
 
-def test_parse_search_seller_ids_only_when_numeric() -> None:
+def test_parse_search_uses_only_seller_specific_numeric_ids() -> None:
     payload = json.loads((FIXTURES / "search_results.json").read_text(encoding="utf-8"))
     main = payload["data"]["resultList"][0]["data"]["item"]["main"]
     args = main["clickParam"]["args"]
@@ -38,11 +41,34 @@ def test_parse_search_seller_ids_only_when_numeric() -> None:
     }
     assert search_from_payload(payload)[0].seller_id is None
 
+    # The search response's jump.user_id can be the same across different sellers.
     main["exContent"]["jump2XianYuHao"]["clickParam"]["args"]["user_id"] = "998877"
-    assert search_from_payload(payload)[0].seller_id == "998877"
+    args["userId"] = "776655"
+    assert search_from_payload(payload)[0].seller_id is None
+
+    main["exContent"]["jump2XianYuHao"]["clickParam"]["args"]["seller_id"] = "887766"
+    assert search_from_payload(payload)[0].seller_id == "887766"
 
     args["seller_id"] = "112233"
     assert search_from_payload(payload)[0].seller_id == "112233"
+
+
+def test_image_uploader_number_can_supply_seller_id() -> None:
+    payload = json.loads((FIXTURES / "search_results.json").read_text(encoding="utf-8"))
+    main = payload["data"]["resultList"][0]["data"]["item"]["main"]
+    main["clickParam"]["args"]["seller_id"] = "opaque-search-seller"
+    main["exContent"]["picUrl"] = (
+        "https://img.alicdn.com/bao/uploaded/i1/2215811796357/example.jpg"
+    )
+    item = search_from_payload(payload)[0]
+
+    assert item.seller_id == "2215811796357"
+    assert image_seller_id_candidate(
+        "https://other.example/bao/uploaded/i1/2215811796357/example.jpg"
+    ) is None
+    assert image_seller_id_candidate(
+        "https://img.alicdn.com/bao/uploaded/i1/example.jpg"
+    ) is None
 
 
 def test_parse_shop_fixture() -> None:

@@ -21,6 +21,10 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _is_user_validation_error(exc: MtopError) -> bool:
+    return "FAIL_SYS_USER_VALIDATE" in str(exc.ret) or "x5sec" in str(exc).lower()
+
+
 def fetch_detail(session: Session, item_id: str) -> dict:
     return call_mtop(
         session,
@@ -40,7 +44,7 @@ def enrich_seller_id(session: Session, item: SeedItem) -> SeedItem:
     try:
         detail = fetch_detail(session, item.item_id)
     except MtopError as exc:
-        if "FAIL_SYS_USER_VALIDATE" in str(exc.ret) or "x5sec" in str(exc).lower():
+        if _is_user_validation_error(exc):
             raise
         logger.warning("无法补全商品 %s 的卖家 ID：%s", item.item_id, exc)
         return item
@@ -67,7 +71,7 @@ def discover_sellers(
     max_enrich: int = 30,
 ) -> dict:
     """
-    Search keyword → optional detail enrich → write items + seller pool.
+    Search keyword → parse seller IDs → optional detail enrich → pool.
     Returns summary dict.
     """
     run_id = f"disc_{uuid.uuid4().hex[:12]}"
@@ -79,18 +83,27 @@ def discover_sellers(
     conn.commit()
 
     enriched = 0
+    validation_required = False
     skipped_no_seller = 0
     new_sellers = 0
 
     try:
         items = search(keyword, session)
         if enrich:
-            for item in items[:max_enrich]:
+            selected = items[:max_enrich]
+            for item in selected:
                 if item.seller_id:
                     continue
-                before = item.seller_id
-                enrich_seller_id(session, item)
-                if item.seller_id and item.seller_id != before:
+                try:
+                    enrich_seller_id(session, item)
+                except MtopError as exc:
+                    if not _is_user_validation_error(exc) or not any(
+                        candidate.seller_id for candidate in selected
+                    ):
+                        raise
+                    validation_required = True
+                    break
+                if item.seller_id:
                     enriched += 1
     except Exception:
         conn.execute(
@@ -132,6 +145,7 @@ def discover_sellers(
         "keyword": keyword,
         "item_count": len(items),
         "enriched": enriched,
+        "validation_required": validation_required,
         "skipped_no_seller": skipped_no_seller,
         "new_sellers": new_sellers,
         "items": items,

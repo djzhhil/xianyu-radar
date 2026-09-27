@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+import re
+from collections import defaultdict
 from typing import Any
+from urllib.parse import urlsplit
 
 from xianyu_radar.models import SeedItem
 from xianyu_radar.infrastructure.item_identity import extract_item_id, normalize_goofish_url
+
+
+IMAGE_SELLER_PATH = re.compile(r"^/bao/uploaded/i[1-4]/([0-9]{9,16})/[^/]+$")
+
+
+def image_seller_id_candidate(pic_url: Any) -> str | None:
+    """Read a possible seller ID from an Alibaba uploaded-image path."""
+    if not isinstance(pic_url, str):
+        return None
+    parsed = urlsplit(pic_url)
+    if parsed.hostname != "img.alicdn.com":
+        return None
+    match = IMAGE_SELLER_PATH.fullmatch(parsed.path)
+    return match.group(1) if match else None
 
 
 def _price_from_ex_content(ex: dict) -> str:
@@ -19,11 +36,11 @@ def _price_from_ex_content(ex: dict) -> str:
 
 
 def _seller_id_from_search(args: dict, ex: dict) -> str | None:
-    """Only numeric seller IDs can be used by the shop-list API."""
+    """Use only seller-specific numeric IDs as shop-list userId candidates."""
     jump = ex.get("jump2XianYuHao") or {}
     jump_args = ((jump.get("clickParam") or {}).get("args") or {})
     for source in (args, jump_args):
-        for key in ("userId", "sellerId", "seller_id", "user_id", "uid"):
+        for key in ("sellerId", "seller_id"):
             value = source.get(key)
             if value is not None:
                 candidate = str(value).strip()
@@ -36,6 +53,7 @@ def parse_search_results(payload: dict[str, Any]) -> list[SeedItem]:
     """Parse mtop.taobao.idlemtopsearch.pc.search response."""
     result_list = (payload.get("data") or {}).get("resultList") or []
     items: list[SeedItem] = []
+    image_groups: dict[tuple[str, str], list[tuple[SeedItem, str | None]]] = defaultdict(list)
     for entry in result_list:
         main = (((entry.get("data") or {}).get("item") or {}).get("main") or {})
         ex = main.get("exContent") or {}
@@ -65,18 +83,47 @@ def parse_search_results(payload: dict[str, Any]) -> list[SeedItem]:
         url = normalize_goofish_url(raw_link, item_id)
         seller_nick = ex.get("userNickName") or None
         seller_id = _seller_id_from_search(args, ex)
-
-        items.append(
-            SeedItem(
-                item_id=item_id,
-                title=str(title).strip(),
-                price=str(price).strip(),
-                url=url,
-                seller_id=seller_id,
-                seller_nick=seller_nick,
-                raw=entry,
-            )
+        jump_args = (
+            ((ex.get("jump2XianYuHao") or {}).get("clickParam") or {}).get("args") or {}
         )
+        search_seller_ref = (
+            args.get("seller_id") or args.get("sellerId") or jump_args.get("seller_id")
+        )
+
+        item = SeedItem(
+            item_id=item_id,
+            title=str(title).strip(),
+            price=str(price).strip(),
+            url=url,
+            seller_id=seller_id,
+            seller_nick=seller_nick,
+            raw=entry,
+        )
+        items.append(item)
+        group_key = (
+            ("seller", str(search_seller_ref))
+            if search_seller_ref
+            else ("item", item_id)
+        )
+        image_groups[group_key].append((item, image_seller_id_candidate(ex.get("picUrl"))))
+
+    # Resolve in memory only. Shared image uploaders and conflicting images are ambiguous.
+    candidate_groups: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    for group_key, group in image_groups.items():
+        for _, candidate in group:
+            if candidate:
+                candidate_groups[candidate].add(group_key)
+    for group_key, group in image_groups.items():
+        candidates = {candidate for _, candidate in group if candidate}
+        explicit_ids = {item.seller_id for item, _ in group if item.seller_id}
+        if len(candidates) != 1:
+            continue
+        candidate = next(iter(candidates))
+        if len(candidate_groups[candidate]) != 1 or (explicit_ids and explicit_ids != {candidate}):
+            continue
+        for item, _ in group:
+            if not item.seller_id:
+                item.seller_id = candidate
     return items
 
 
