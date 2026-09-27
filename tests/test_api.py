@@ -10,7 +10,7 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
-from xianyu_radar.api.app import create_app
+from xianyu_radar.entrypoints.api.app import create_app
 from xianyu_radar import config as cfg
 
 REAL_ROOT = Path(__file__).resolve().parents[1]

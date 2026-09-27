@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from xianyu_radar.auth.mtop import create_sign
-from xianyu_radar.auth.session import AuthError, load_session
+from xianyu_radar.infrastructure.goofish.mtop import create_sign
+from xianyu_radar.infrastructure.goofish.session import AuthError, load_session
 
 
 def test_create_sign_known_vector() -> None:

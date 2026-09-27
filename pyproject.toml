@@ -21,14 +21,14 @@ dev = [
 ]
 
 [project.scripts]
-radar = "xianyu_radar.cli:main"
-radar-web = "xianyu_radar.api.server:main"
+radar = "xianyu_radar.entrypoints.cli:main"
+radar-web = "xianyu_radar.entrypoints.api.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-xianyu_radar = ["storage/schema.sql"]
+"xianyu_radar.infrastructure.storage" = ["schema.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

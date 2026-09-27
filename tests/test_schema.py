@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from xianyu_radar.config import SCHEMA_VERSION
-from xianyu_radar.storage.db import get_schema_version, init_db, table_names
+from xianyu_radar.infrastructure.storage.db import get_schema_version, init_db, table_names
 
 REQUIRED_TABLES = {
     "meta",

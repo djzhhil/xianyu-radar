@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xianyu_radar.discovery.item_parser import (
-    extract_item_id,
-    extract_seller_id,
-    parse_search_results,
-    parse_shop_card_list,
-)
-from xianyu_radar.discovery.keyword_search import search_from_fixture
+from xianyu_radar.modules.discovery.item_parser import extract_seller_id
+from xianyu_radar.modules.discovery.keyword_search import search_from_fixture
+from xianyu_radar.infrastructure.item_identity import extract_item_id
+from xianyu_radar.modules.scan.shop_parser import parse_shop_card_list
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

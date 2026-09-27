@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xianyu_radar.candidates.detector import is_target_product, list_candidates, process_new_item_events
-from xianyu_radar.items.diff import diff_items
+from xianyu_radar.modules.scan.candidate_detector import is_target_product, process_new_item_events
+from xianyu_radar.modules.candidates.service import list_candidates
+from xianyu_radar.modules.scan.diff import diff_items
 from xianyu_radar.models import SellerItem
-from xianyu_radar.sellers.monitor import apply_scan_result
-from xianyu_radar.storage.db import init_db
+from xianyu_radar.modules.scan.service import apply_scan_result
+from xianyu_radar.infrastructure.storage.db import init_db
 
 
 def test_is_target_product() -> None:

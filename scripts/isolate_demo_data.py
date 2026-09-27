@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from xianyu_radar.storage.isolate_env import isolate_demo_data  # noqa: E402
+from xianyu_radar.infrastructure.storage.isolate_env import isolate_demo_data  # noqa: E402
 
 if __name__ == "__main__":
     print(json.dumps(isolate_demo_data(), ensure_ascii=False, indent=2))

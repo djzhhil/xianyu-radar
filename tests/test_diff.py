@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from xianyu_radar.items.diff import diff_items
+from xianyu_radar.modules.scan.diff import diff_items
 from xianyu_radar.models import SellerItem
 
 

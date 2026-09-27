@@ -4,7 +4,7 @@ Used by `radar auth check` / all online commands.
 
 ## Cookie header (simplest)
 
-Save as `data/state/default.json`:
+Save as `data/prod/state/default.json` for real scans, or `data/demo/state/default.json` for demo data:
 
 ```json
 {
@@ -27,4 +27,4 @@ Save as `data/state/default.json`:
 
 - `_m_h5_tk` is **required**. Sign token = substring before the first `_`.
 - Do not commit real cookie files. `data/` is gitignored.
-- On auth/session failures the scheduler sets `meta.auth_paused` and stops scanning until you fix cookies and run `radar scan-pool --clear-auth-pause` (or delete the meta row).
+- 扫描遇到登录态失效时会写入 `meta.auth_paused` 并停止后续扫描。更新 Cookie 后可运行 `radar scan-pool --clear-auth-pause` 清除暂停。

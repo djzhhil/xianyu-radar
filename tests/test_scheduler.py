@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from xianyu_radar.auth.session import Session
-from xianyu_radar.scheduler.runner import is_auth_paused, run_pool_once
-from xianyu_radar.sellers.pool import add_seller_from_discovery
-from xianyu_radar.storage.db import init_db
+from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.infrastructure.storage.auth_state import is_auth_paused
+from xianyu_radar.modules.scan.runner import run_pool_once
+from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery
+from xianyu_radar.infrastructure.storage.db import init_db
 
 
 def test_run_pool_respects_auth_pause(tmp_path: Path) -> None:
@@ -34,7 +35,7 @@ def test_run_pool_calls_scan(tmp_path: Path) -> None:
     conn.commit()
     session = Session(cookies="a=1", token="t", source="t")
     with patch(
-        "xianyu_radar.scheduler.runner.scan_seller",
+        "xianyu_radar.modules.scan.runner.scan_seller",
         return_value={"status": "ok", "events": []},
     ) as mocked:
         results = run_pool_once(conn, session)

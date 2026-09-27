@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xianyu_radar.discovery.seller_discovery import discover_sellers
-from xianyu_radar.sellers.pool import list_pool
-from xianyu_radar.storage.db import init_db
+from xianyu_radar.modules.discovery.service import discover_sellers
+from xianyu_radar.infrastructure.storage.seller_repository import list_pool
+from xianyu_radar.infrastructure.storage.db import init_db
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -29,7 +29,7 @@ def test_discover_from_fixture_without_seller_id(tmp_path: Path) -> None:
 
 
 def test_pool_dedupe(tmp_path: Path) -> None:
-    from xianyu_radar.sellers.pool import add_seller_from_discovery
+    from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery
 
     conn = init_db(tmp_path / "t.sqlite3")
     c1 = add_seller_from_discovery(

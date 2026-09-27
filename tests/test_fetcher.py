@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from xianyu_radar.auth.session import Session
-from xianyu_radar.sellers.fetcher import get_seller_items, get_seller_items_from_payload
+from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.modules.scan.fetcher import get_seller_items, get_seller_items_from_payload
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -42,6 +42,6 @@ def test_pagination_merges_pages() -> None:
         },
     }
     session = Session(cookies="x=1", token="tok", source="test", cookie_count=1)
-    with patch("xianyu_radar.sellers.fetcher.call_mtop", side_effect=[page1, page2]):
+    with patch("xianyu_radar.modules.scan.fetcher.call_mtop", side_effect=[page1, page2]):
         items = get_seller_items(session, "999", page_size=2)
     assert [i.item_id for i in items] == ["1", "2", "3"]

@@ -10,6 +10,8 @@
 研究材料（只读）：`_research/xianyu-monitor`、`_research/xianyu-automation`  
 设计文档：`PROJECT_ANALYSIS.md` → `SYSTEM_DESIGN.md` → `IMPLEMENTATION_PLAN.md` → `PROGRESS.md`
 
+当前代码的目录地图与请求链路：[`docs/architecture.md`](docs/architecture.md)。设计文档记录早期方案，路径以当前代码地图为准。
+
 ## 安装
 
 ```bash
@@ -50,7 +52,7 @@ radar env isolate
 
 ## 登录态
 
-将 Cookie 放到 `data/state/default.json`（见 `docs/session_format.md`）。  
+将 Cookie 放到 `data/<env>/state/default.json`（见 `docs/session_format.md`）。
 必须包含 `_m_h5_tk`。也可在 Web「登录态」页粘贴保存。
 
 ```bash
@@ -69,7 +71,7 @@ radar discover --keyword "你的已验证商品名"
 radar pool list
 radar pool set-status <sellerId> paused|watching|dropped
 
-# 3) 扫描（首次为 baseline，不进候选）
+# 3) 扫描（是否为 baseline 取决于该卖家已有的商品记录）
 radar scan-seller <sellerId>
 radar scan-pool
 
@@ -83,22 +85,30 @@ radar run --interval 90 --jitter 30
 
 离线/夹具：`scripts/mvp_smoke.md`
 
-## 模块
+## 代码区域
+
+| 区域 | 职责 |
+|----|------|
+| `src/xianyu_radar/entrypoints/` | HTTP API 和 CLI 入口 |
+| `src/xianyu_radar/modules/` | 按业务能力划分的模块 |
+| `src/xianyu_radar/infrastructure/` | 各业务共用的闲鱼协议、商品标识规则与 SQLite 存储 |
+
+### 业务模块
 
 | 包 | 职责 |
 |----|------|
-| `auth` | Cookie / MTOP 签名 |
-| `discovery` | 关键词搜索、解析、sellerId |
-| `sellers` | 商家池、拉店、监控 |
-| `items` | 当前态、snapshot、diff |
-| `candidates` | 非目标 NEW → 候选 |
-| `scheduler` | 轮询 / 退避 |
-| `storage` | SQLite |
+| `auth` | 登录态保存、状态和检查 |
+| `discovery` | 关键词搜索、解析结果、发现商家并入池 |
+| `pool` | 查看商家池、修改商家状态 |
+| `scan` | 拉取店铺商品、比较变化、保存事件和候选、轮询商家池 |
+| `candidates` | 查看候选商品、修改审核状态 |
+
+每个业务目录的 `service.py` 是该功能的主入口。API 路由位于 `entrypoints/api/routes/`，按 HTTP 地址分发；业务模块之间没有直接 Python 导入。完整目录地图和请求链路见 [`docs/architecture.md`](docs/architecture.md)。
 
 ## MVP 边界
 
-**做了：** 发现→池→扫描→diff→候选→CLI+SQLite  
-**不做：** GUI、AI、自动上架/购买/发货、五维统计强依赖
+**做了：** 发现→池→扫描→diff→候选→CLI、Web UI、SQLite
+**不做：** AI、自动上架/购买/发货、五维统计强依赖
 
 ## 测试
 
