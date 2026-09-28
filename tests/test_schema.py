@@ -78,3 +78,23 @@ def test_v2_candidates_are_flagged_without_changing_review_status(tmp_path: Path
     assert tuple(row) == ("legacy_unverified", "rejected")
     assert get_schema_version(conn) == SCHEMA_VERSION
     conn.close()
+
+
+def test_v3_runs_migrate_without_losing_history(tmp_path: Path) -> None:
+    db_path = tmp_path / "v3.sqlite3"
+    storage = Path(__file__).parents[1] / "src/xianyu_radar/infrastructure/storage"
+    with sqlite3.connect(db_path) as old:
+        old.executescript((storage / "schema.sql").read_text())
+        old.executescript((storage / "migrations/0002_scan_quality.sql").read_text())
+        old.executescript((storage / "migrations/0003_candidate_quality.sql").read_text())
+        old.execute("INSERT INTO meta(key, value) VALUES ('schema_version', '3')")
+        old.execute(
+            "INSERT INTO discovery_runs(id, keyword, started_at, item_count, seller_count, status) "
+            "VALUES ('old', 'camera', 't', 2, 1, 'ok')"
+        )
+    conn = init_db(db_path)
+    run = conn.execute("SELECT item_count, seller_count, status, page_count "
+                       "FROM discovery_runs WHERE id='old'").fetchone()
+    assert tuple(run) == (2, 1, "ok", 0)
+    assert {"discovery_pages", "discovery_items", "discovery_entries", "scan_pages"} <= table_names(conn)
+    conn.close()

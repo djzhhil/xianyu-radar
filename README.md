@@ -66,7 +66,9 @@ radar auth check --ping
 
 ```bash
 # 1) 关键词发现 → 商家池（在线）
-radar discover --keyword "你的已验证商品名"
+radar discover --keyword "你的已验证商品名" --max-pages 3
+# 中断后按原关键词继续；可调高总页数上限
+radar discover --keyword "你的已验证商品名" --resume-run-id <runId> --max-pages 5
 
 # 2) 查看商家池
 radar pool list
@@ -86,6 +88,10 @@ radar run --interval 90 --jitter 30
 ```
 
 自动测试与手动验证步骤：`scripts/mvp_smoke.md`
+
+发现按页保存进度。Web 的「最近发现记录」区分原始结果、去重商品、识别商家和新增商家；「查看诊断」可查每页及每件商品的处理结论，「继续」会从未完成页和待补全商品恢复。接口分别是 `GET /api/discover/runs/{run_id}` 和 `POST /api/discover`（传入 `resume_run_id` 与原关键词）。诊断只保存字段名、计数、状态及按运行 ID 散列的商品引用，不保存原始搜索/详情响应和 Cookie。限流或人机验证会立即停止后续请求，并保留已确认的商家。
+
+店铺扫描以 `nextPage`、短页和有效的正数 `totalCount` 判断结束；有商品时返回的 `totalCount=0` 视为不可用。没有明确结束信号的空页、重复页、页数上限或总数不一致仍记为不完整，不能改动商品当前态、事件和候选。`GET /api/scan/runs/{scan_id}` 可查脱敏的每页计数与分页信号。已确认的空店和商品数骤降仍需要第二次完整扫描才能确认。
 
 ## 代码区域
 

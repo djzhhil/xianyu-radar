@@ -27,6 +27,17 @@ def get_scan_runs(
     return list_scan_runs(conn, seller_id=seller, limit=limit, offset=offset)
 
 
+@router.get("/runs/{scan_id}")
+def get_scan_run(scan_id: str, conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    run = conn.execute("SELECT * FROM scans WHERE id=?", (scan_id,)).fetchone()
+    if not run:
+        raise HTTPException(status_code=404, detail="扫描记录不存在")
+    pages = conn.execute(
+        "SELECT * FROM scan_pages WHERE scan_id=? ORDER BY page_number", (scan_id,)
+    ).fetchall()
+    return {"run": dict(run), "pages": [dict(page) for page in pages]}
+
+
 class ScanSellerBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

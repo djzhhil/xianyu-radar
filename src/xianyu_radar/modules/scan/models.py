@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from xianyu_radar.models import SellerItem
 
@@ -14,3 +14,4 @@ class SellerCatalog:
     page_count: int
     finish_reason: str
     complete: bool
+    diagnostics: list[dict] = field(default_factory=list)

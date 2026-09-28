@@ -50,7 +50,12 @@ def test_parse_search_uses_only_seller_specific_numeric_ids() -> None:
     assert search_from_payload(payload)[0].seller_id == "887766"
 
     args["seller_id"] = "112233"
-    assert search_from_payload(payload)[0].seller_id == "112233"
+    assert search_from_payload(payload)[0].seller_id is None
+
+    main["exContent"]["picUrl"] = (
+        "https://img.alicdn.com/bao/uploaded/i1/2215811796357/example.jpg"
+    )
+    assert search_from_payload(payload)[0].seller_id is None
 
 
 def test_image_uploader_number_can_supply_seller_id() -> None:
@@ -69,6 +74,15 @@ def test_image_uploader_number_can_supply_seller_id() -> None:
     assert image_seller_id_candidate(
         "https://img.alicdn.com/bao/uploaded/i1/example.jpg"
     ) is None
+
+
+def test_numeric_seller_profile_user_id_is_used_when_unambiguous() -> None:
+    payload = json.loads((FIXTURES / "search_results.json").read_text(encoding="utf-8"))
+    main = payload["data"]["resultList"][0]["data"]["item"]["main"]
+    main["exContent"]["jump2XianYuHao"] = {
+        "clickParam": {"args": {"userId": "998877"}}
+    }
+    assert search_from_payload(payload)[0].seller_id == "998877"
 
 
 def test_parse_shop_fixture() -> None:

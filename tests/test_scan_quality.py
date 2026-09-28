@@ -21,7 +21,7 @@ def test_incomplete_scan_does_not_change_current_items(tmp_path: Path, monkeypat
     apply_scan_result(conn, "seller", _items(3))
     monkeypatch.setattr(
         "xianyu_radar.modules.scan.service.get_seller_items",
-        lambda *_: SellerCatalog(_items(1), 3, 1, "end_marker", False),
+        lambda *_, **kwargs: SellerCatalog(_items(1), 3, 1, "end_marker", False),
     )
     result = scan_seller(conn, Session("cookie", "token", "test"), "seller")
     assert result["status"] == "failed"
@@ -37,7 +37,7 @@ def test_large_drop_requires_matching_complete_rescan(tmp_path: Path, monkeypatc
     apply_scan_result(conn, "seller", _items(70))
     monkeypatch.setattr(
         "xianyu_radar.modules.scan.service.get_seller_items",
-        lambda *_: SellerCatalog(_items(8), 8, 1, "total_count", True),
+        lambda *_, **kwargs: SellerCatalog(_items(8), 8, 1, "total_count", True),
     )
     session = Session("cookie", "token", "test")
     first = scan_seller(conn, session, "seller")
@@ -79,7 +79,7 @@ def test_verified_empty_shop_requires_two_complete_observations(tmp_path: Path, 
     apply_scan_result(conn, "seller", _items(25))
     monkeypatch.setattr(
         "xianyu_radar.modules.scan.service.get_seller_items",
-        lambda *_: SellerCatalog([], 0, 1, "empty_catalog", True),
+        lambda *_, **kwargs: SellerCatalog([], 0, 1, "empty_catalog", True),
     )
     session = Session("cookie", "token", "test")
     first = scan_seller(conn, session, "seller")

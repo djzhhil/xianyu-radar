@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 from typing import Any
@@ -22,6 +23,12 @@ class MtopError(Exception):
         super().__init__(message)
         self.ret = ret
         self.payload = payload
+
+
+def make_mtop_client(*, timeout: float = 20.0) -> httpx.Client:
+    """Share connections across a bounded sequence of MTOP requests."""
+    proxy = os.environ.get("RADAR_HTTP_PROXY") or os.environ.get("RADAR_HTTPS_PROXY")
+    return httpx.Client(timeout=timeout, trust_env=False, proxy=proxy or None)
 
 
 def create_sign(token: str, ts: str | int, data_str: str, app_key: str = MTOP_APP_KEY) -> str:
@@ -84,12 +91,7 @@ def call_mtop(
 
     owns_client = client is None
     if owns_client:
-        # WSL/shell often sets ALL_PROXY=socks5://... without socksio installed.
-        # Default to direct connection; set RADAR_HTTP_PROXY to opt into a proxy.
-        import os
-
-        proxy = os.environ.get("RADAR_HTTP_PROXY") or os.environ.get("RADAR_HTTPS_PROXY")
-        client = httpx.Client(timeout=timeout, trust_env=False, proxy=proxy or None)
+        client = make_mtop_client(timeout=timeout)
     try:
         resp = client.post(url, content=body, headers=headers)
         text = resp.text

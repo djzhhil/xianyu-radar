@@ -282,7 +282,7 @@ def test_detail_validation_failure_is_visible_and_does_not_create_sellers(
         discover.discover(discover.DiscoverBody(keyword="Sony A7M4"), conn)
 
     assert error.value.status_code == 403
-    assert conn.execute("SELECT status FROM discovery_runs").fetchone()["status"] == "failed"
+    assert conn.execute("SELECT status FROM discovery_runs").fetchone()["status"] == "verification_required"
     assert conn.execute("SELECT COUNT(*) FROM sellers").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
 
@@ -310,7 +310,7 @@ def test_scan_candidates_and_events_share_the_same_data_store(
     items = get_seller_items_from_payload(response)
     monkeypatch.setattr(
         "xianyu_radar.modules.scan.service.get_seller_items",
-        lambda *args: SellerCatalog(items, len(items), 1, "total_count", True),
+        lambda *args, **kwargs: SellerCatalog(items, len(items), 1, "total_count", True),
     )
 
     first = scan.scan_one(
@@ -327,7 +327,7 @@ def test_scan_candidates_and_events_share_the_same_data_store(
     )
     monkeypatch.setattr(
         "xianyu_radar.modules.scan.service.get_seller_items",
-        lambda *args: SellerCatalog(items + [new_item], len(items) + 1, 1, "total_count", True),
+        lambda *args, **kwargs: SellerCatalog(items + [new_item], len(items) + 1, 1, "total_count", True),
     )
     second = scan.scan_one(
         "SELLER_TEST",

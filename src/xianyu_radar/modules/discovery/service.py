@@ -1,164 +1,419 @@
-"""Enrich seed items with seller_id and upsert into seller pool."""
+"""Paged seller discovery with resumable work and redacted diagnostics."""
 
 from __future__ import annotations
 
-import logging
+import hashlib
+import json
+import random
+import re
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 
-from xianyu_radar.infrastructure.goofish.mtop import MtopError, call_mtop
+from xianyu_radar.infrastructure.goofish.mtop import MtopError, call_mtop, make_mtop_client
 from xianyu_radar.infrastructure.goofish.session import AuthError, Session
+from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery, upsert_seed_item
+from xianyu_radar.models import SeedItem
 from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
 from xianyu_radar.modules.discovery.keyword_search import search
-from xianyu_radar.models import SeedItem
-from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery, upsert_seed_item
-
-logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def list_discovery_runs(
-    conn: sqlite3.Connection, *, limit: int = 20, offset: int = 0
-) -> dict:
+def list_discovery_runs(conn: sqlite3.Connection, *, limit: int = 20, offset: int = 0) -> dict:
     total = conn.execute("SELECT COUNT(*) FROM discovery_runs").fetchone()[0]
     rows = conn.execute(
-        "SELECT id, keyword, started_at, finished_at, item_count, seller_count, status "
+        "SELECT id, keyword, started_at, finished_at, item_count, seller_count, status, "
+        "error_kind, page_count, raw_result_count, unique_item_count, unique_seller_count, "
+        "enriched_count, unresolved_count, unparsed_count, next_page, max_pages "
         "FROM discovery_runs ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?",
         (limit, offset),
     ).fetchall()
     return {"total": total, "runs": [dict(row) for row in rows], "limit": limit, "offset": offset}
 
 
-def _is_user_validation_error(exc: MtopError) -> bool:
-    return "FAIL_SYS_USER_VALIDATE" in str(exc.ret) or "x5sec" in str(exc).lower()
+def _error_kind(exc: Exception) -> str:
+    if isinstance(exc, AuthError):
+        return "auth"
+    if isinstance(exc, MtopError):
+        blob = f"{exc} {exc.ret}".lower()
+        if "fail_sys_user_validate" in blob or "x5sec" in blob:
+            return "verification_required"
+        if "rgv587" in blob or "挤爆" in blob or "稍后重试" in blob:
+            return "rate_limit"
+        return "network"
+    return "parse_failed"
 
 
-def fetch_detail(session: Session, item_id: str) -> dict:
+def fetch_detail(session: Session, item_id: str, client=None) -> dict:
     return call_mtop(
-        session,
-        "taobao.idle.pc.detail",
-        {
-            "id": str(item_id),
-            "returnItemDO": True,
-            "needSellerDO": True,
-        },
-        {"spm_cnt": "a21ybx.item.0.0"},
+        session, "taobao.idle.pc.detail",
+        {"id": str(item_id), "returnItemDO": True, "needSellerDO": True},
+        {"spm_cnt": "a21ybx.item.0.0"}, client=client,
     )
 
 
-def enrich_seller_id(session: Session, item: SeedItem) -> SeedItem:
+def _seller_fields(source: dict) -> list[str]:
+    return sorted(str(key) for key in source
+                  if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(key))
+                  and ("seller" in str(key).lower() or str(key).lower() in {"userid", "user_id"}))
+
+
+def _as_dict(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _search_diagnostic(item: SeedItem, run_id: str) -> str:
+    entry = _as_dict(item.raw)
+    main = _as_dict(_as_dict(_as_dict(entry.get("data")).get("item")).get("main"))
+    ex = _as_dict(main.get("exContent"))
+    args = _as_dict(_as_dict(main.get("clickParam")).get("args"))
+    jump = _as_dict(_as_dict(_as_dict(ex.get("jump2XianYuHao")).get("clickParam")).get("args"))
+    seller_ref = (args.get("seller_id") or args.get("sellerId") or jump.get("seller_id")
+                  or jump.get("sellerId") or jump.get("userId"))
+    group = f"seller:{seller_ref}" if seller_ref else f"item:{item.item_id}"
+    group_ref = hashlib.sha256(f"{run_id}:{group}".encode()).hexdigest()
+    source = "unresolved"
     if item.seller_id:
-        return item
-    try:
-        detail = fetch_detail(session, item.item_id)
-    except MtopError as exc:
-        if _is_user_validation_error(exc):
-            raise
-        logger.warning("无法补全商品 %s 的卖家 ID：%s", item.item_id, exc)
-        return item
-    except AuthError:
-        raise
-    except Exception:
-        logger.exception("补全商品 %s 的卖家 ID 时发生异常", item.item_id)
-        return item
-    sid = extract_seller_id(detail)
-    nick = extract_seller_nick(detail)
-    if sid:
-        item.seller_id = sid
-    if nick and not item.seller_nick:
-        item.seller_nick = nick
-    return item
+        for label, fields in (("search_args", args), ("search_jump", jump)):
+            keys = ("sellerId", "seller_id", "userId") if label == "search_jump" else ("sellerId", "seller_id")
+            if any(str(fields.get(key, "")).strip() == item.seller_id for key in keys):
+                source = label
+                break
+        else:
+            source = "image_path"
+    return json.dumps({"source": source, "group_ref": group_ref,
+                       "search_args_fields": _seller_fields(args),
+                       "search_jump_fields": _seller_fields(jump)}, ensure_ascii=False)
+
+
+def _revoke_discovery_item(conn: sqlite3.Connection, row: sqlite3.Row, reason: str) -> None:
+    if row["pool_entry_id"]:
+        conn.execute("UPDATE seller_pool_entries SET active=0 WHERE id=?", (row["pool_entry_id"],))
+        other_source = conn.execute(
+            "SELECT 1 FROM seller_pool_entries WHERE source_item_id=? AND active=1 LIMIT 1",
+            (row["item_id"],),
+        ).fetchone()
+        if not other_source:
+            conn.execute(
+                "UPDATE items SET status='unknown' WHERE item_id=? AND seller_id=? "
+                "AND source='discovery'", (row["item_id"], row["seller_id"]),
+            )
+    conn.execute(
+        "UPDATE discovery_items SET seller_id=NULL, resolution='unresolved', error_kind=?, "
+        "pooled=0, pool_entry_id=NULL WHERE run_id=? AND item_id=?",
+        (reason, row["run_id"], row["item_id"]),
+    )
+
+
+def _save_page(conn: sqlite3.Connection, run_id: str, page: int, found: list[SeedItem],
+               raw_count: int, entries: list | None, signal: object, result_type: str) -> int:
+    before = conn.execute("SELECT COUNT(*) FROM discovery_items WHERE run_id=?", (run_id,)).fetchone()[0]
+    for item in found:
+        diagnostic = _search_diagnostic(item, run_id)
+        info = json.loads(diagnostic)
+        ambiguous_image = False
+        if item.seller_id:
+            same_candidate = conn.execute(
+                "SELECT run_id, item_id, seller_id, diagnostic, pool_entry_id FROM discovery_items "
+                "WHERE run_id=? AND seller_id=?", (run_id, item.seller_id),
+            ).fetchall()
+            for prior in same_candidate:
+                prior_info = json.loads(prior["diagnostic"])
+                if prior_info.get("group_ref") == info["group_ref"]:
+                    continue
+                if prior_info.get("source") == "image_path":
+                    _revoke_discovery_item(conn, prior, "ambiguous_image")
+                if info["source"] == "image_path":
+                    ambiguous_image = True
+            if ambiguous_image:
+                item.seller_id = None
+        existing = conn.execute(
+            "SELECT run_id, item_id, seller_id, error_kind, pool_entry_id "
+            "FROM discovery_items WHERE run_id=? AND item_id=?",
+            (run_id, item.item_id),
+        ).fetchone()
+        if existing:
+            if existing["seller_id"] and item.seller_id and existing["seller_id"] != item.seller_id:
+                _revoke_discovery_item(conn, existing, "conflicting_seller")
+            elif not existing["seller_id"] and existing["error_kind"] in (None, "ambiguous_image") and item.seller_id:
+                conn.execute(
+                    "UPDATE discovery_items SET seller_id=?, resolution='search', "
+                    "error_kind=NULL, diagnostic=? "
+                    "WHERE run_id=? AND item_id=?",
+                    (item.seller_id, diagnostic, run_id, item.item_id),
+                )
+            continue
+        conn.execute(
+            "INSERT INTO discovery_items(run_id, item_id, title, price, url, seller_nick, "
+            "seller_id, resolution, error_kind, diagnostic) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (run_id, item.item_id, item.title, item.price, item.url, item.seller_nick,
+             item.seller_id, "search" if item.seller_id else "unresolved" if ambiguous_image else "pending",
+             "ambiguous_image" if ambiguous_image else None, diagnostic),
+        )
+    if entries is not None:
+        parsed = {id(item.raw): item.item_id for item in found}
+        for index, entry in enumerate(entries):
+            item_id = parsed.get(id(entry))
+            item_ref = hashlib.sha256(f"{run_id}:{item_id}".encode()).hexdigest() if item_id else None
+            prior = conn.execute(
+                "SELECT 1 FROM discovery_entries WHERE run_id=? AND item_ref=? LIMIT 1",
+                (run_id, item_ref),
+            ).fetchone() if item_ref else None
+            conn.execute(
+                "INSERT INTO discovery_entries(run_id, page_number, entry_index, outcome, item_ref) "
+                "VALUES (?,?,?,?,?)",
+                (run_id, page, index, "missing_item_id" if not item_id else "duplicate" if prior else "parsed",
+                 item_ref),
+            )
+    unique = conn.execute("SELECT COUNT(*) FROM discovery_items WHERE run_id=?", (run_id,)).fetchone()[0]
+    safe_signal = str(signal) if isinstance(signal, (bool, int)) or (
+        isinstance(signal, str) and (signal.isdigit() or signal.lower() in {"true", "false"})
+    ) else None
+    conn.execute(
+        "INSERT INTO discovery_pages(run_id, page_number, raw_count, parsed_count, unique_count, "
+        "next_page, result_type) VALUES (?,?,?,?,?,?,?)",
+        (run_id, page, raw_count, len(found), unique, safe_signal, result_type),
+    )
+    conn.execute(
+        "UPDATE discovery_runs SET next_page=?, page_count=page_count+1, "
+        "raw_result_count=raw_result_count+? WHERE id=?",
+        (page + 1, raw_count, run_id),
+    )
+    conn.commit()
+    return unique - before
+
+
+def _following_page(found: list[SeedItem], page: int, rows_per_page: int) -> tuple[int, str | None]:
+    signal = getattr(found, "next_page", None)
+    if signal is None:
+        signal = getattr(found, "has_next", None)
+    if signal in (False, "false", 0, "0"):
+        return 0, None
+    if signal is True or str(signal).lower() == "true":
+        return page + 1, None
+    if signal is not None:
+        if str(signal).isdigit() and int(signal) > page:
+            return int(signal), None
+        return page, "invalid_next_page"
+    raw_count = getattr(found, "raw_count", len(found))
+    return (page + 1, None) if raw_count >= rows_per_page else (0, None)
+
+
+def _finish(conn: sqlite3.Connection, run_id: str, keyword: str,
+            status: str, error_kind: str | None) -> dict:
+    conn.execute(
+        "INSERT OR IGNORE INTO watch_keywords(keyword, exclude_patterns, enabled, created_at) "
+        "VALUES (?, NULL, 1, ?)", (keyword, _now()),
+    )
+    rows = conn.execute("SELECT * FROM discovery_items WHERE run_id=?", (run_id,)).fetchall()
+    new_sellers = 0
+    items = []
+    for row in rows:
+        item = SeedItem(row["item_id"], row["title"], row["price"], row["url"],
+                        row["seller_id"], row["seller_nick"])
+        items.append(item)
+        if item.seller_id and not row["pooled"]:
+            if add_seller_from_discovery(
+                conn, seller_id=item.seller_id, nickname=item.seller_nick,
+                source_keyword=keyword, source_item_id=item.item_id,
+            ):
+                new_sellers += 1
+            pool_entry_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            upsert_seed_item(conn, item, keyword=keyword)
+            conn.execute(
+                "UPDATE discovery_items SET pooled=1, pool_entry_id=? "
+                "WHERE run_id=? AND item_id=?", (pool_entry_id, run_id, item.item_id),
+            )
+    unique_sellers = len({item.seller_id for item in items if item.seller_id})
+    unresolved = sum(not item.seller_id for item in items)
+    unparsed = conn.execute(
+        "SELECT COUNT(*) FROM discovery_entries WHERE run_id=? AND outcome='missing_item_id'",
+        (run_id,),
+    ).fetchone()[0]
+    enriched = sum(row["resolution"] == "detail" for row in rows)
+    conn.execute(
+        "UPDATE discovery_runs SET finished_at=?, item_count=?, unique_item_count=?, "
+        "seller_count=seller_count+?, unique_seller_count=?, enriched_count=?, "
+        "unresolved_count=?, unparsed_count=?, status=?, error_kind=? WHERE id=?",
+        (_now(), len(items), len(items), new_sellers, unique_sellers, enriched,
+         unresolved, unparsed, status, error_kind, run_id),
+    )
+    conn.commit()
+    run = conn.execute(
+        "SELECT page_count, raw_result_count, next_page, seller_count FROM discovery_runs WHERE id=?",
+        (run_id,),
+    ).fetchone()
+    return {
+        "run_id": run_id, "keyword": keyword, "status": status, "error_kind": error_kind,
+        "item_count": len(items), "page_count": run["page_count"],
+        "raw_result_count": run["raw_result_count"], "unique_seller_count": unique_sellers,
+        "enriched": enriched, "validation_required": error_kind == "verification_required",
+        "skipped_no_seller": unresolved, "new_sellers": run["seller_count"],
+        "unparsed_count": unparsed,
+        "next_page": run["next_page"], "items": items,
+    }
 
 
 def discover_sellers(
-    conn: sqlite3.Connection,
-    keyword: str,
-    *,
-    session: Session,
-    enrich: bool = True,
-    max_enrich: int = 30,
+    conn: sqlite3.Connection, keyword: str, *, session: Session,
+    enrich: bool = True, max_enrich: int = 30, max_pages: int = 3,
+    resume_run_id: str | None = None, rows_per_page: int = 30,
 ) -> dict:
-    """
-    Search keyword → parse seller IDs → optional detail enrich → pool.
-    Returns summary dict.
-    """
-    run_id = f"disc_{uuid.uuid4().hex[:12]}"
-    started = _now()
-    conn.execute(
-        "INSERT INTO discovery_runs(id, keyword, started_at, status) VALUES (?,?,?,?)",
-        (run_id, keyword, started, "running"),
-    )
-    conn.commit()
-
-    enriched = 0
-    validation_required = False
-    skipped_no_seller = 0
-    new_sellers = 0
-
-    try:
-        items = search(keyword, session)
-        if enrich:
-            selected = items[:max_enrich]
-            for item in selected:
-                if item.seller_id:
-                    continue
-                try:
-                    enrich_seller_id(session, item)
-                except MtopError as exc:
-                    if not _is_user_validation_error(exc) or not any(
-                        candidate.seller_id for candidate in selected
-                    ):
-                        raise
-                    validation_required = True
-                    break
-                if item.seller_id:
-                    enriched += 1
-    except Exception:
+    """Search bounded pages, persist each page, and resume pending detail work."""
+    if not 1 <= max_pages <= 50 or rows_per_page < 1 or max_enrich < 0:
+        raise ValueError("invalid discovery limits")
+    if resume_run_id:
+        run = conn.execute("SELECT * FROM discovery_runs WHERE id=?", (resume_run_id,)).fetchone()
+        if not run or run["keyword"] != keyword or run["status"] == "ok":
+            raise ValueError("discovery run cannot be resumed")
+        run_id = resume_run_id
+        page = run["next_page"]
         conn.execute(
-            "UPDATE discovery_runs SET finished_at=?, status='failed' WHERE id=?",
-            (_now(), run_id),
+            "UPDATE discovery_runs SET status='running', error_kind=NULL, "
+            "finished_at=NULL, max_pages=? WHERE id=?", (max_pages, run_id),
         )
-        conn.commit()
-        raise
-
-    # Ensure keyword registered
-    conn.execute(
-        "INSERT OR IGNORE INTO watch_keywords(keyword, exclude_patterns, enabled, created_at) "
-        "VALUES (?, NULL, 1, ?)",
-        (keyword, _now()),
-    )
-
-    for item in items:
-        if not item.seller_id:
-            skipped_no_seller += 1
-            continue
-        created = add_seller_from_discovery(
-            conn,
-            seller_id=item.seller_id,
-            nickname=item.seller_nick,
-            source_keyword=keyword,
-            source_item_id=item.item_id,
+        conn.execute(
+            "UPDATE discovery_items SET resolution='pending', error_kind=NULL "
+            "WHERE run_id=? AND seller_id IS NULL AND error_kind IN "
+            "('verification_required', 'rate_limit', 'auth', 'network', 'parse_failed', "
+            "'seller_id_missing', 'enrichment_disabled', 'enrichment_limit', "
+            "'ambiguous_image', 'conflicting_seller')",
+            (run_id,),
         )
-        if created:
-            new_sellers += 1
-        upsert_seed_item(conn, item, keyword=keyword)
-
-    conn.execute(
-        "UPDATE discovery_runs SET finished_at=?, item_count=?, seller_count=?, status=? WHERE id=?",
-        (_now(), len(items), new_sellers, "ok", run_id),
-    )
+    else:
+        run_id = f"disc_{uuid.uuid4().hex[:12]}"
+        page = 1
+        conn.execute(
+            "INSERT INTO discovery_runs(id, keyword, started_at, status, max_pages) "
+            "VALUES (?,?,?,'running',?)", (run_id, keyword, _now(), max_pages),
+        )
     conn.commit()
-    return {
-        "run_id": run_id,
-        "keyword": keyword,
-        "item_count": len(items),
-        "enriched": enriched,
-        "validation_required": validation_required,
-        "skipped_no_seller": skipped_no_seller,
-        "new_sellers": new_sellers,
-        "items": items,
-    }
+    error_kind = None
+    caught: Exception | None = None
+    while page and page <= max_pages:
+        try:
+            found = search(keyword, session) if page == 1 else search(keyword, session, page_number=page)
+            raw_count = getattr(found, "raw_count", len(found))
+            following, page_error = _following_page(found, page, rows_per_page)
+            added = _save_page(
+                conn, run_id, page, found, raw_count,
+                getattr(found, "entries", None), getattr(found, "next_page", None),
+                getattr(found, "result_type", "mock"),
+            )
+            if page_error:
+                error_kind = page_error
+                break
+            if raw_count and added == 0:
+                error_kind = "duplicate_page"
+                break
+            page = following
+            conn.execute("UPDATE discovery_runs SET next_page=? WHERE id=?", (page, run_id))
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            error_kind, caught = _error_kind(exc), exc
+            break
+    if page and page > max_pages and error_kind is None:
+        error_kind = "page_limit"
+
+    # A platform block stops further requests; identified sellers remain usable.
+    if error_kind not in {"rate_limit", "verification_required", "auth"} and enrich:
+        pending = conn.execute(
+            "SELECT item_id FROM discovery_items WHERE run_id=? AND seller_id IS NULL "
+            "AND (error_kind IS NULL OR error_kind IN ('ambiguous_image', 'conflicting_seller')) "
+            "ORDER BY rowid LIMIT ?", (run_id, max_enrich),
+        ).fetchall()
+        if pending:
+            with make_mtop_client() as client:
+                for index, row in enumerate(pending):
+                    if index:
+                        time.sleep(0.4 + random.uniform(0, 0.4))
+                    item_id = row["item_id"]
+                    for attempt in range(2):
+                        try:
+                            detail = fetch_detail(session, item_id, client)
+                            seller_id = extract_seller_id(detail)
+                            seller_nick = extract_seller_nick(detail)
+                            fields = sorted(str(key) for key in
+                                            _as_dict(_as_dict(detail.get("data") or detail).get("sellerDO"))
+                                            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(key)))
+                            conn.execute(
+                                "UPDATE discovery_items SET seller_id=?, "
+                                "seller_nick=COALESCE(?, seller_nick), resolution=?, "
+                                "error_kind=?, diagnostic=? WHERE run_id=? AND item_id=?",
+                                (seller_id, seller_nick, "detail" if seller_id else "unresolved",
+                                 None if seller_id else "seller_id_missing",
+                                 json.dumps({"source": "sellerDO" if seller_id else "unresolved",
+                                             "detail_fields": fields}, ensure_ascii=False),
+                                 run_id, item_id),
+                            )
+                            conn.commit()
+                            break
+                        except Exception as exc:
+                            kind = _error_kind(exc)
+                            if kind in {"rate_limit", "verification_required", "auth"}:
+                                error_kind, caught = kind, exc
+                                conn.execute(
+                                    "UPDATE discovery_items SET resolution='blocked', error_kind=? "
+                                    "WHERE run_id=? AND item_id=?", (kind, run_id, item_id),
+                                )
+                                conn.commit()
+                                break
+                            if attempt == 0:
+                                time.sleep(1.0 + random.uniform(0, 0.5))
+                            else:
+                                conn.execute(
+                                    "UPDATE discovery_items SET resolution='detail_error', error_kind=? "
+                                    "WHERE run_id=? AND item_id=?", (kind, run_id, item_id),
+                                )
+                                conn.commit()
+                    if error_kind in {"rate_limit", "verification_required", "auth"}:
+                        break
+    if error_kind in {"rate_limit", "verification_required", "auth"}:
+        conn.execute(
+            "UPDATE discovery_items SET resolution='blocked', error_kind=? "
+            "WHERE run_id=? AND seller_id IS NULL AND error_kind IS NULL",
+            (error_kind, run_id),
+        )
+    elif not enrich:
+        conn.execute(
+            "UPDATE discovery_items SET resolution='not_enriched', "
+            "error_kind='enrichment_disabled' WHERE run_id=? AND seller_id IS NULL "
+            "AND error_kind IS NULL", (run_id,),
+        )
+    else:
+        conn.execute(
+            "UPDATE discovery_items SET error_kind='enrichment_limit' "
+            "WHERE run_id=? AND seller_id IS NULL AND error_kind IS NULL", (run_id,),
+        )
+    conn.commit()
+    rows = conn.execute("SELECT seller_id, error_kind FROM discovery_items WHERE run_id=?", (run_id,)).fetchall()
+    unresolved = sum(not row["seller_id"] for row in rows)
+    unparsed = conn.execute(
+        "SELECT COUNT(*) FROM discovery_entries WHERE run_id=? AND outcome='missing_item_id'",
+        (run_id,),
+    ).fetchone()[0]
+    if error_kind is None and unparsed:
+        error_kind = "parse_failed"
+    if error_kind is None and any(row["error_kind"] == "network" for row in rows):
+        error_kind = "network"
+    if error_kind is None and unresolved:
+        error_kind = "unresolved_items"
+    if error_kind in {"rate_limit", "verification_required", "auth"}:
+        status = error_kind
+    elif error_kind == "network":
+        status = "partial" if any(row["seller_id"] for row in rows) else "failed"
+    elif error_kind in {"unresolved_items", "page_limit", "duplicate_page"}:
+        status = "partial"
+    elif error_kind:
+        status = "partial" if any(row["seller_id"] for row in rows) else "parse_failed"
+    else:
+        status = "ok"
+    summary = _finish(conn, run_id, keyword, status, error_kind)
+    if caught and not summary["unique_seller_count"]:
+        raise caught
+    return summary

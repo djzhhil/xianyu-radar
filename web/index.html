@@ -55,18 +55,19 @@
       <p class="hint">输入关键词，搜索商品并把识别出的卖家加入商家池。这里不会扫描商家的全部商品。</p>
       <form id="discoverForm" class="row-form">
         <input name="keyword" type="text" placeholder="输入商品关键词" required />
+        <label>最多页数 <input name="max_pages" type="number" min="1" max="50" value="3" /></label>
         <button type="submit">开始发现</button>
       </form>
       <p class="result-message" id="discoverResult" role="status"></p>
       <h3>本次搜索商品</h3>
-      <p class="hint">点击商家可查看已存商品。商品列表来自本次关键词搜索，不代表商家的完整商品目录。</p>
+      <p class="hint">点击商家可查看已存商品。这里最多展示前 50 条搜索商品，不代表商家的完整商品目录。</p>
       <div class="table-wrap"><table>
         <thead><tr><th>商品</th><th>价格</th><th>商家</th><th>商品链接</th></tr></thead>
         <tbody id="discoverBody"><tr><td colspan="4">开始发现后在这里查看结果</td></tr></tbody>
       </table></div>
       <h3>最近发现记录</h3>
       <div class="table-wrap"><table>
-        <thead><tr><th>时间</th><th>关键词</th><th>商品数</th><th>商家数</th><th>结果</th></tr></thead>
+        <thead><tr><th>时间</th><th>关键词</th><th>页数/原始/去重</th><th>识别商家</th><th>新增商家</th><th>结果</th><th>操作</th></tr></thead>
         <tbody id="discoveryRunsBody"></tbody>
       </table></div>
       <details class="response-details">

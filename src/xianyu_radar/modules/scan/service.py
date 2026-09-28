@@ -219,8 +219,18 @@ def _scan_seller_unlocked(
     keyword_hints: list[str] | None = None,
 ) -> dict:
     scan_id = f"scan_{uuid.uuid4().hex[:12]}"
+    def save_page(page: dict) -> None:
+        conn.execute(
+            "INSERT INTO scan_pages(scan_id, page_number, total_type, total_value, "
+            "card_count, parsed_count, next_field, next_page, unique_count) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (scan_id, page["page_number"], page["total_type"], page["total_value"],
+             page["card_count"], page["parsed_count"], page["next_field"],
+             page["next_page"], page["unique_count"]),
+        )
+        conn.commit()
     try:
-        catalog = get_seller_items(session, seller_id)
+        catalog = get_seller_items(session, seller_id, on_page=save_page)
     except AuthError as e:
         conn.execute(
             "INSERT INTO scans(id, seller_id, started_at, finished_at, status, error_kind) "

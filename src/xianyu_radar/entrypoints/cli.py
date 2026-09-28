@@ -108,6 +108,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
         args.keyword,
         session=session,
         enrich=not args.no_enrich,
+        max_pages=args.max_pages,
+        resume_run_id=args.resume_run_id,
     )
     conn.close()
     print(
@@ -324,6 +326,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keyword", "-k", required=True)
     p.add_argument("--state", default=None)
     p.add_argument("--no-enrich", action="store_true")
+    p.add_argument("--max-pages", type=int, default=3)
+    p.add_argument("--resume-run-id")
     p.set_defaults(func=cmd_discover)
 
     p = sub.add_parser("pool", help="Seller pool")
