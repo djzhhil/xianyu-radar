@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+branch=$(git symbolic-ref --quiet --short HEAD || true)
+case "$branch" in
+    main|master)
+        echo "禁止直接在 $branch 提交：请先创建任务分支，测试通过后再合并。" >&2
+        exit 1
+        ;;
+    '')
+        echo "当前处于 detached HEAD，先切换到任务分支再提交。" >&2
+        exit 1
+        ;;
+esac
