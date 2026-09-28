@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -13,7 +15,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from xianyu_radar import config as cfg
-from xianyu_radar.entrypoints.api.app import create_app
+from xianyu_radar.entrypoints.api.app import SameOriginWriteMiddleware, create_app
+from xianyu_radar.entrypoints.api.server import main as serve_main
 from xianyu_radar.entrypoints.api.deps import get_db
 from xianyu_radar.entrypoints.api.routes import auth, candidates, discover, events, pool, scan, status
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
@@ -21,6 +24,7 @@ from xianyu_radar.infrastructure.storage.db import init_db
 from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery
 from xianyu_radar.models import SellerItem
 from xianyu_radar.modules.scan.fetcher import get_seller_items_from_payload
+from xianyu_radar.modules.scan.models import SellerCatalog
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -54,6 +58,38 @@ def test_app_has_one_data_environment() -> None:
     with pytest.raises(ValidationError):
         scan.ScanSellerBody(fixture="tests/fixtures/shop_items.json")
     assert status.health()["ok"] is True
+
+
+def test_web_rejects_cross_site_writes() -> None:
+    called = []
+    sent = []
+
+    async def inner(scope, receive, send):
+        called.append(scope)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    middleware = SameOriginWriteMiddleware(inner)
+    scope = {
+        "type": "http", "method": "POST", "scheme": "http", "path": "/api/auth/clear-pause",
+        "headers": [(b"host", b"testserver"), (b"origin", b"https://example.invalid")],
+    }
+    asyncio.run(middleware(scope, receive, send))
+    assert not called
+    assert sent[0]["status"] == 403
+
+    scope["headers"] = [(b"host", b"testserver"), (b"origin", b"http://testserver")]
+    asyncio.run(middleware(scope, receive, send))
+    assert len(called) == 1
+
+
+def test_web_server_refuses_nonlocal_binding() -> None:
+    with pytest.raises(SystemExit):
+        serve_main(["--host", "0.0.0.0"])
 
 
 def test_pool_detail_and_run_history_read_stored_data(conn) -> None:
@@ -108,6 +144,11 @@ def test_events_and_candidates_have_stable_pages_and_totals(conn) -> None:
         )
     conn.commit()
 
+    conn.execute(
+        "UPDATE candidates SET quality_flag='legacy_unverified' WHERE normalized_title='candidate-0'"
+    )
+    conn.commit()
+
     first_events = events.get_events(since="", limit=2, offset=0, conn=conn)
     next_events = events.get_events(since="", limit=2, offset=2, conn=conn)
     assert first_events["total"] == next_events["total"] == 3
@@ -120,6 +161,11 @@ def test_events_and_candidates_have_stable_pages_and_totals(conn) -> None:
     assert len(first_candidates["candidates"]) == 2
     assert len(next_candidates["candidates"]) == 1
     assert first_candidates["candidates"][0]["candidate_id"] != next_candidates["candidates"][0]["candidate_id"]
+    normal = candidates.get_candidates(since="", quality="normal", conn=conn)
+    legacy = candidates.get_candidates(since="", quality="legacy_unverified", conn=conn)
+    assert normal["total"] == 2
+    assert legacy["total"] == 1
+    assert legacy["candidates"][0]["quality_flag"] == "legacy_unverified"
 
 
 def test_api_database_connection_survives_worker_thread_switch(conn) -> None:
@@ -159,6 +205,19 @@ def test_auth_and_discover_use_the_same_data_store(conn, monkeypatch: pytest.Mon
     assert found["new_sellers"] == 1
     assert status.status(conn)["counts"]["items"] == 1
     assert status.status(conn)["counts"]["watching_sellers"] == 1
+
+
+def test_invalid_cookie_cannot_overwrite_saved_session(conn, tmp_path: Path) -> None:
+    auth.save_session(
+        auth.SessionBody(payload={"cookie": "_m_h5_tk=validtoken_1710000000000; a=1"}),
+        conn,
+    )
+    path = tmp_path / "state/default.json"
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(HTTPException):
+        auth.save_session(auth.SessionBody(payload={"cookie": "a=1"}), conn)
+    assert path.read_text(encoding="utf-8") == before
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_detail_validation_failure_is_visible_and_does_not_create_sellers(
@@ -209,7 +268,8 @@ def test_scan_candidates_and_events_share_the_same_data_store(
     response = json.loads((FIXTURES / "shop_items.json").read_text(encoding="utf-8"))
     items = get_seller_items_from_payload(response)
     monkeypatch.setattr(
-        "xianyu_radar.modules.scan.service.get_seller_items", lambda *args: items
+        "xianyu_radar.modules.scan.service.get_seller_items",
+        lambda *args: SellerCatalog(items, len(items), 1, "total_count", True),
     )
 
     first = scan.scan_one(
@@ -225,7 +285,8 @@ def test_scan_candidates_and_events_share_the_same_data_store(
         url="https://www.goofish.com/item?id=999000111",
     )
     monkeypatch.setattr(
-        "xianyu_radar.modules.scan.service.get_seller_items", lambda *args: items + [new_item]
+        "xianyu_radar.modules.scan.service.get_seller_items",
+        lambda *args: SellerCatalog(items + [new_item], len(items) + 1, 1, "total_count", True),
     )
     second = scan.scan_one(
         "SELLER_TEST",

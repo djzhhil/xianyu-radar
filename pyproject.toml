@@ -28,7 +28,7 @@ radar-web = "xianyu_radar.entrypoints.api.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"xianyu_radar.infrastructure.storage" = ["schema.sql"]
+"xianyu_radar.infrastructure.storage" = ["schema.sql", "migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

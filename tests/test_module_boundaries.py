@@ -33,6 +33,12 @@ def test_business_modules_do_not_import_each_other() -> None:
             assert not other_features, f"{path} imports {sorted(other_features)}"
 
 
+def test_infrastructure_does_not_import_business_modules() -> None:
+    for path in (SOURCE / "infrastructure").rglob("*.py"):
+        imports = _feature_imports(path) & FEATURES
+        assert not imports, f"{path} imports {sorted(imports)}"
+
+
 def test_business_api_routes_enter_their_own_feature() -> None:
     routes = {
         "auth": "auth",

@@ -20,6 +20,18 @@ def load_active_items(conn: sqlite3.Connection, seller_id: str) -> dict[str, dic
     return {r["item_id"]: dict(r) for r in rows}
 
 
+def mark_unseen_seed_items_unknown(
+    conn: sqlite3.Connection, seller_id: str, current_ids: set[str]
+) -> None:
+    """Reconcile discovery seeds absent from the first complete shop catalog."""
+    rows = conn.execute(
+        "SELECT item_id FROM items WHERE seller_id=? AND source='discovery' AND status='active'",
+        (seller_id,),
+    ).fetchall()
+    missing = [(row["item_id"],) for row in rows if row["item_id"] not in current_ids]
+    conn.executemany("UPDATE items SET status='unknown' WHERE item_id=?", missing)
+
+
 def ensure_seller(conn: sqlite3.Connection, seller_id: str) -> None:
     now = _now()
     row = conn.execute(
@@ -49,7 +61,7 @@ def upsert_seller_item(
         check = int(existing["check_count"] or 0) + (1 if bump_check else 0)
         conn.execute(
             "UPDATE items SET seller_id=?, title=?, price=?, url=?, status='active', "
-            "last_seen_at=?, last_price=?, last_title=?, check_count=? WHERE item_id=?",
+            "last_seen_at=?, last_price=?, last_title=?, check_count=?, missing_count=0 WHERE item_id=?",
             (
                 seller_id,
                 item.title,
@@ -87,4 +99,13 @@ def mark_removed(conn: sqlite3.Connection, item_id: str) -> None:
     conn.execute(
         "UPDATE items SET status='removed', last_seen_at=? WHERE item_id=?",
         (now, item_id),
+    )
+
+
+def increment_missing(
+    conn: sqlite3.Connection, item_ids: set[str], *, increment: int = 1
+) -> None:
+    conn.executemany(
+        "UPDATE items SET missing_count=missing_count+? WHERE item_id=? AND status='active'",
+        [(increment, item_id) for item_id in item_ids],
     )

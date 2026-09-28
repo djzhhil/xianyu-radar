@@ -22,16 +22,22 @@ def run_pool_once(
     session: Session,
     *,
     on_result: Callable[[dict], None] | None = None,
+    between_sellers_sec: float = 2.0,
+    jitter_sec: float = 1.0,
 ) -> list[dict]:
     if is_auth_paused(conn):
         return [{"status": "skipped", "error_kind": "auth_paused"}]
     sellers = list_pool(conn, status="watching")
     results = []
+    scanned = 0
     for s in sellers:
         # skip unknown placeholders
         if str(s["seller_id"]).startswith("unknown:"):
             continue
+        if scanned:
+            time.sleep(max(0.0, between_sellers_sec + random.uniform(0, jitter_sec)))
         result = scan_seller(conn, session, s["seller_id"])
+        scanned += 1
         results.append(result)
         if on_result:
             on_result(result)

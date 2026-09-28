@@ -9,6 +9,7 @@ from xianyu_radar import config as cfg
 from xianyu_radar.config import SCHEMA_VERSION, ensure_data_dirs
 
 SCHEMA_FILE = Path(__file__).with_name("schema.sql")
+MIGRATIONS_DIR = Path(__file__).with_name("migrations")
 
 
 def connect(db_path: Path | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection:
@@ -34,17 +35,37 @@ def get_schema_version(conn: sqlite3.Connection) -> int:
 
 
 def init_db(db_path: Path | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection:
-    """Create tables if needed. Safe to call repeatedly."""
+    """Create the v1 schema and apply later migrations once, in order."""
     conn = connect(db_path, check_same_thread=check_same_thread)
     sql = SCHEMA_FILE.read_text(encoding="utf-8")
     conn.executescript(sql)
     current = get_schema_version(conn)
-    if current < SCHEMA_VERSION:
+    if current == 0:
         conn.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
+            ("1",),
         )
         conn.commit()
+        current = 1
+    if current > SCHEMA_VERSION:
+        conn.close()
+        raise RuntimeError(f"Database schema {current} is newer than supported {SCHEMA_VERSION}")
+    for version in range(current + 1, SCHEMA_VERSION + 1):
+        files = sorted(MIGRATIONS_DIR.glob(f"{version:04d}_*.sql"))
+        if len(files) != 1:
+            conn.close()
+            raise RuntimeError(f"Expected one migration for schema version {version}")
+        migration = files[0].read_text(encoding="utf-8")
+        try:
+            conn.executescript(
+                "BEGIN IMMEDIATE;\n"
+                + migration
+                + f"\nUPDATE meta SET value='{version}' WHERE key='schema_version';\nCOMMIT;"
+            )
+        except Exception:
+            conn.rollback()
+            conn.close()
+            raise
     return conn
 
 

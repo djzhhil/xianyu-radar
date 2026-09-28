@@ -12,6 +12,8 @@
 
 当前代码的目录地图与请求链路：[`docs/architecture.md`](docs/architecture.md)。设计文档记录早期方案，路径以当前代码地图为准。
 
+数据可信度问题的定位、文件级修复步骤和验收标准：[`docs/repair_plan.md`](docs/repair_plan.md)。
+
 ## 安装
 
 ```bash
@@ -45,6 +47,8 @@ data/debug/               # 调试文件
 
 从旧版升级时，将原 `data/prod/radar.sqlite3` 和 `data/prod/state/` 中的文件移到上述位置；不要覆盖已经存在的目标文件。本工作区的数据已完成迁移。
 
+数据库初始化会按版本升级；升级前请备份 `data/radar.sqlite3`。本工作区的 v1 备份存于 `data/backups/`。修复前的候选标为 `legacy_unverified`，在 Web 候选页或 `radar candidates --quality legacy_unverified` 中复核；人工审核状态仍保留。
+
 ## 登录态
 
 将 Cookie 放到 `data/state/default.json`（见 `docs/session_format.md`）。
@@ -72,6 +76,7 @@ radar scan-pool
 
 # 4) 再次扫描后查看候选 / 事件
 radar candidates --since 24h
+radar candidates --quality normal --since 24h
 radar events --since 24h
 
 # 5) 长期轮询（慢速 + 抖动）
@@ -102,7 +107,7 @@ radar run --interval 90 --jitter 30
 
 ## MVP 边界
 
-**做了：** 发现→池→扫描→diff→候选→CLI、Web UI、SQLite
+**做了：** 发现→池→扫描→diff→候选→CLI、Web UI、SQLite；首次扫描基线、分页完整性和异常数量复扫保护
 **不做：** AI、自动上架/购买/发货、五维统计强依赖
 
 ## 测试

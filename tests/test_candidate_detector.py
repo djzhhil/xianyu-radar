@@ -7,9 +7,10 @@ from pathlib import Path
 from xianyu_radar.modules.scan.candidate_detector import is_target_product, process_new_item_events
 from xianyu_radar.modules.candidates.service import list_candidates
 from xianyu_radar.modules.scan.diff import diff_items
-from xianyu_radar.models import SellerItem
+from xianyu_radar.models import SeedItem, SellerItem
 from xianyu_radar.modules.scan.service import apply_scan_result
 from xianyu_radar.infrastructure.storage.db import init_db
+from xianyu_radar.infrastructure.storage.seller_repository import upsert_seed_item
 
 
 def test_is_target_product() -> None:
@@ -51,4 +52,41 @@ def test_candidates_skip_baseline_and_keyword(tmp_path: Path) -> None:
     titles = {c["sample_title"] for c in cands}
     assert "Photoshop 教程" in titles
     assert not any("Sony A7M4 进阶" in t for t in titles)
+    conn.close()
+
+
+def test_discovery_seed_does_not_turn_first_shop_scan_into_new_candidates(tmp_path: Path) -> None:
+    conn = init_db(tmp_path / "seeded.sqlite3")
+    upsert_seed_item(
+        conn,
+        SeedItem("seed", "搜索标题", "10", "https://x/seed", seller_id="sellerA"),
+        keyword="搜索标题",
+    )
+    upsert_seed_item(
+        conn,
+        SeedItem("stale", "已不在店铺", "11", "https://x/stale", seller_id="sellerA"),
+        keyword="搜索标题",
+    )
+    conn.commit()
+
+    first = apply_scan_result(
+        conn,
+        "sellerA",
+        [SellerItem("seed", "店铺标题", "12", "https://x/seed"),
+         SellerItem("existing", "其他库存", "8", "https://x/existing")],
+    )
+    assert first["candidates"]["added"] == 0
+    assert {e.item_id for e in first["events"]} == {"seed", "existing"}
+    assert all(e.event_type == "NEW_ITEM" and e.is_baseline for e in first["events"])
+    assert conn.execute("SELECT status FROM items WHERE item_id='stale'").fetchone()[0] == "unknown"
+
+    second = apply_scan_result(
+        conn,
+        "sellerA",
+        [SellerItem("seed", "店铺标题", "12", "https://x/seed"),
+         SellerItem("existing", "其他库存", "8", "https://x/existing"),
+         SellerItem("fresh", "新商品", "9", "https://x/fresh")],
+    )
+    assert second["candidates"]["added"] == 1
+    assert {e.item_id for e in second["events"]} == {"fresh"}
     conn.close()

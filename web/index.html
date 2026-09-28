@@ -150,8 +150,13 @@
           <option value="24h">过去 24 小时</option>
           <option value="7d">过去 7 天</option>
         </select>
+        <select id="candQuality" aria-label="候选数据质量">
+          <option value="all">全部数据</option>
+          <option value="normal">新扫描候选</option>
+          <option value="legacy_unverified">历史待核实</option>
+        </select>
       </div>
-      <p class="hint">扫描发现的新商品会出现在这里，可调整其审核状态。</p>
+      <p class="hint">扫描发现的新商品会出现在这里。历史待核实数据来自修复前的扫描，请复核后再用于选品。</p>
       <div id="candList" class="cand-list"></div>
       <div class="pager"><button type="button" class="ghost tiny" id="candidatesPrev">上一页</button><span id="candidatesPage"></span><button type="button" class="ghost tiny" id="candidatesNext">下一页</button></div>
     </section>
@@ -163,6 +168,6 @@
   </footer>
 
   <div class="toast" id="toast" hidden></div>
-  <script src="/assets/app.js?v=20260928-data-views"></script>
+  <script src="/assets/app.js?v=20260928-quality-fixes"></script>
 </body>
 </html>

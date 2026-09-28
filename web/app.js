@@ -18,7 +18,8 @@ const eventTypes = {
 };
 const itemStatuses = { active: "在售", removed: "已下架", unknown: "未知" };
 const itemSources = { discovery: "关键词发现", seller_scan: "商家扫描" };
-const runStatuses = { running: "进行中", ok: "成功", failed: "失败" };
+const runStatuses = { running: "进行中", ok: "成功", failed: "失败", suspect: "待复核" };
+const scanErrors = { incomplete: "分页不完整", count_drop: "商品数骤降，等待复扫" };
 const pageSize = 20;
 const viewState = { sellerId: null, sellerOffset: 0, eventsOffset: 0, candidatesOffset: 0 };
 
@@ -316,7 +317,8 @@ async function refreshPool() {
 
 async function refreshCandidates() {
   const since = $("#candSince").value;
-  const query = `?since=${encodeURIComponent(since)}&limit=${pageSize}&offset=${viewState.candidatesOffset}`;
+  const quality = $("#candQuality").value;
+  const query = `?since=${encodeURIComponent(since)}&quality=${encodeURIComponent(quality)}&limit=${pageSize}&offset=${viewState.candidatesOffset}`;
   const data = await api(`/api/candidates${query}`);
   const list = $("#candList");
   list.replaceChildren();
@@ -337,7 +339,8 @@ async function refreshCandidates() {
     title.textContent = candidate.sample_title || candidate.normalized_title || "未命名商品";
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = `参考价格 ${candidate.sample_price || "—"} · 来源商家 ${candidate.seller_count} · 出现 ${candidate.appearance_count} 次 · 评分 ${Number(candidate.score || 0).toFixed(1)}`;
+    const qualityLabel = candidate.quality_flag === "legacy_unverified" ? "历史待核实" : "新扫描候选";
+    meta.textContent = `${qualityLabel} · 参考价格 ${candidate.sample_price || "—"} · 来源商家 ${candidate.seller_count} · 出现 ${candidate.appearance_count} 次 · 评分 ${Number(candidate.score || 0).toFixed(1)}`;
     const sources = document.createElement("div");
     sources.className = "meta";
     sources.textContent = `商家：${(candidate.source_sellers || []).join("、") || "—"}`;
@@ -383,7 +386,9 @@ async function refreshScanRuns() {
   if (!data.runs.length) return addEmptyRow(body, "暂无扫描记录", 5);
   for (const run of data.runs) {
     const row = document.createElement("tr");
-    [run.started_at, run.seller_id, run.item_count, run.event_count, run.error_kind || runStatuses[run.status] || run.status].forEach((value) => addCell(row, value));
+    const diagnosis = scanErrors[run.error_kind] || run.error_kind || runStatuses[run.status] || run.status;
+    const detail = run.page_count ? `${diagnosis} · ${run.page_count} 页 · 预期 ${run.expected_count ?? "未知"} · ${run.finish_reason || "—"}` : diagnosis;
+    [run.started_at, run.seller_id, run.item_count, run.event_count, detail].forEach((value) => addCell(row, value));
     body.appendChild(row);
   }
 }
@@ -483,10 +488,10 @@ $("#btnScan").addEventListener("click", () => withBusy($("#btnScan"), "扫描中
     if (sellerId) {
       message = result.status === "ok"
         ? `商家 ${sellerId} 扫描完成：商品 ${result.item_count} 条，事件 ${result.events?.length || 0} 条。`
-        : `商家 ${sellerId} 扫描失败：${result.error_kind || "未知原因"}。`;
+        : `商家 ${sellerId} 扫描未提交：${scanErrors[result.error_kind] || result.error_kind || "未知原因"}；已读 ${result.item_count || 0} 条，预期 ${result.expected_count ?? "未知"} 条。`;
     } else {
-      const failed = (result.results || []).filter((item) => item.status !== "ok").length;
-      message = `商家池扫描完成：共 ${result.count} 个商家${failed ? `，其中 ${failed} 个失败` : ""}。`;
+      const uncommitted = (result.results || []).filter((item) => item.status !== "ok").length;
+      message = `商家池扫描完成：共 ${result.count} 个商家${uncommitted ? `，其中 ${uncommitted} 个未提交` : ""}。`;
     }
     setResult("#scanResult", message, sellerId && result.status !== "ok");
     toast(message);
@@ -520,6 +525,10 @@ for (const [prefix, stateKey, refresh] of [
   }
 }
 $("#candSince").addEventListener("change", () => {
+  viewState.candidatesOffset = 0;
+  refreshCandidates().catch((error) => toast(error.message));
+});
+$("#candQuality").addEventListener("change", () => {
   viewState.candidatesOffset = 0;
   refreshCandidates().catch((error) => toast(error.message));
 });

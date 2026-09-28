@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +48,22 @@ def save_session(conn: sqlite3.Connection, payload: dict[str, Any], filename: st
     if not name.endswith(".json"):
         name += ".json"
     path = cfg.STATE_DIR / name
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=cfg.STATE_DIR,
+            prefix=f".{name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            os.chmod(temporary, 0o600)
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        load_session(temporary)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     session = load_session(path)
     clear_auth_paused(conn)
     result = _session_view(session, paused=False)

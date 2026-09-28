@@ -12,10 +12,18 @@ from xianyu_radar.modules.scan.candidate_detector import process_new_item_events
 from xianyu_radar.config import MAX_CONSECUTIVE_FAILURES
 from xianyu_radar.modules.scan.diff import diff_items
 from xianyu_radar.modules.scan.history import write_snapshots
-from xianyu_radar.modules.scan.item_repository import load_active_items, mark_removed, upsert_seller_item
+from xianyu_radar.modules.scan.item_repository import (
+    increment_missing,
+    load_active_items,
+    mark_removed,
+    mark_unseen_seed_items_unknown,
+    upsert_seller_item,
+)
 from xianyu_radar.models import ItemEvent, SellerItem
 from xianyu_radar.modules.scan.fetcher import get_seller_items
 from xianyu_radar.modules.scan.events import count_events, list_events
+from xianyu_radar.modules.scan.models import SellerCatalog
+from xianyu_radar.modules.scan.locks import seller_scan_lock
 
 
 def _now() -> str:
@@ -50,6 +58,8 @@ def apply_scan_result(
     *,
     scan_id: str | None = None,
     keyword_hints: list[str] | None = None,
+    catalog: SellerCatalog | None = None,
+    missing_increment: int = 1,
 ) -> dict:
     """
     Apply an already-fetched catalog to DB.
@@ -57,12 +67,29 @@ def apply_scan_result(
     """
     scan_id = scan_id or f"scan_{uuid.uuid4().hex[:12]}"
     started = _now()
+    prior_success = conn.execute(
+        "SELECT item_count FROM scans WHERE seller_id=? AND status='ok' "
+        "ORDER BY rowid DESC LIMIT 1",
+        (seller_id,),
+    ).fetchone()
+    baseline = prior_success is None
     conn.execute(
-        "INSERT INTO scans(id, seller_id, started_at, status) VALUES (?,?,?, 'running')",
-        (scan_id, seller_id, started),
+        "INSERT INTO scans(id, seller_id, started_at, status, expected_count, page_count, finish_reason) "
+        "VALUES (?,?,?, 'running',?,?,?)",
+        (
+            scan_id, seller_id, started,
+            catalog.expected_count if catalog else None,
+            catalog.page_count if catalog else None,
+            catalog.finish_reason if catalog else None,
+        ),
     )
 
-    if not current:
+    confirmed_empty = (
+        not baseline and not current and catalog is not None
+        and catalog.complete and catalog.expected_count == 0
+        and (missing_increment >= 2 or int(prior_success["item_count"]) == 0)
+    )
+    if not current and not confirmed_empty:
         conn.execute(
             "UPDATE scans SET finished_at=?, status='failed', error_kind='empty' WHERE id=?",
             (_now(), scan_id),
@@ -88,10 +115,21 @@ def apply_scan_result(
         }
 
     previous = load_active_items(conn, seller_id)
-    events = diff_items(seller_id, previous, current, allow_removed=True)
+    events = diff_items(
+        seller_id, previous, current, baseline=baseline,
+        allow_removed=True, missing_increment=missing_increment,
+    )
+
+    if baseline:
+        mark_unseen_seed_items_unknown(conn, seller_id, {item.item_id for item in current})
 
     for item in current:
         upsert_seller_item(conn, seller_id, item, bump_check=True)
+    if not baseline:
+        increment_missing(
+            conn, set(previous) - {item.item_id for item in current},
+            increment=missing_increment,
+        )
     write_snapshots(conn, seller_id, current, scan_id)
 
     for e in events:
@@ -118,6 +156,40 @@ def apply_scan_result(
         "item_count": len(current),
         "events": events,
         "candidates": cand_stats,
+        "expected_count": catalog.expected_count if catalog else None,
+        "page_count": catalog.page_count if catalog else None,
+        "finish_reason": catalog.finish_reason if catalog else None,
+    }
+
+
+def _record_untrusted_catalog(
+    conn: sqlite3.Connection,
+    scan_id: str,
+    seller_id: str,
+    catalog: SellerCatalog,
+    *,
+    status: str,
+    error_kind: str,
+) -> dict:
+    conn.execute(
+        "INSERT INTO scans(id, seller_id, started_at, finished_at, status, error_kind, "
+        "item_count, expected_count, page_count, finish_reason) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            scan_id, seller_id, _now(), _now(), status, error_kind,
+            len(catalog.items), catalog.expected_count, catalog.page_count,
+            catalog.finish_reason,
+        ),
+    )
+    if status == "suspect":
+        write_snapshots(conn, seller_id, catalog.items, scan_id)
+    conn.commit()
+    return {
+        "scan_id": scan_id, "status": status, "error_kind": error_kind,
+        "item_count": len(catalog.items), "events": [],
+        "expected_count": catalog.expected_count,
+        "page_count": catalog.page_count,
+        "finish_reason": catalog.finish_reason,
     }
 
 
@@ -128,9 +200,27 @@ def scan_seller(
     *,
     keyword_hints: list[str] | None = None,
 ) -> dict:
+    with seller_scan_lock(seller_id) as acquired:
+        if not acquired:
+            return {
+                "status": "skipped", "error_kind": "already_running",
+                "item_count": 0, "events": [],
+            }
+        return _scan_seller_unlocked(
+            conn, session, seller_id, keyword_hints=keyword_hints
+        )
+
+
+def _scan_seller_unlocked(
+    conn: sqlite3.Connection,
+    session: Session,
+    seller_id: str,
+    *,
+    keyword_hints: list[str] | None = None,
+) -> dict:
     scan_id = f"scan_{uuid.uuid4().hex[:12]}"
     try:
-        items = get_seller_items(session, seller_id)
+        catalog = get_seller_items(session, seller_id)
     except AuthError as e:
         conn.execute(
             "INSERT INTO scans(id, seller_id, started_at, finished_at, status, error_kind) "
@@ -156,6 +246,36 @@ def scan_seller(
         conn.commit()
         return {"scan_id": scan_id, "status": "failed", "error_kind": kind, "error": str(e)}
 
+    if not catalog.complete:
+        return _record_untrusted_catalog(
+            conn, scan_id, seller_id, catalog, status="failed", error_kind="incomplete"
+        )
+
+    current_ids = {item.item_id for item in catalog.items}
+    latest = conn.execute(
+        "SELECT id, status, error_kind FROM scans WHERE seller_id=? ORDER BY rowid DESC LIMIT 1",
+        (seller_id,),
+    ).fetchone()
+    prior_ok = conn.execute(
+        "SELECT item_count FROM scans WHERE seller_id=? AND status='ok' "
+        "ORDER BY rowid DESC LIMIT 1",
+        (seller_id,),
+    ).fetchone()
+    prior_count = int(prior_ok["item_count"]) if prior_ok else 0
+    large_drop = prior_count >= 20 and len(catalog.items) * 2 < prior_count
+    confirmed_drop = False
+    if large_drop and latest and latest["status"] == "suspect" and latest["error_kind"] == "count_drop":
+        previous_observation = {
+            row["item_id"] for row in conn.execute(
+                "SELECT item_id FROM item_snapshots WHERE scan_id=?", (latest["id"],)
+            )
+        }
+        confirmed_drop = previous_observation == current_ids
+    if large_drop and not confirmed_drop:
+        return _record_untrusted_catalog(
+            conn, scan_id, seller_id, catalog, status="suspect", error_kind="count_drop"
+        )
+
     # attach keyword hints from pool if not provided
     if keyword_hints is None:
         rows = conn.execute(
@@ -166,5 +286,6 @@ def scan_seller(
         keyword_hints = [r["source_keyword"] for r in rows if r["source_keyword"]]
 
     return apply_scan_result(
-        conn, seller_id, items, scan_id=scan_id, keyword_hints=keyword_hints
+        conn, seller_id, catalog.items, scan_id=scan_id, keyword_hints=keyword_hints,
+        catalog=catalog, missing_increment=2 if confirmed_drop else 1,
     )

@@ -42,3 +42,18 @@ def test_run_pool_calls_scan(tmp_path: Path) -> None:
     mocked.assert_called_once()
     assert results[0]["status"] == "ok"
     conn.close()
+
+
+def test_run_pool_spaces_seller_scans(tmp_path: Path) -> None:
+    conn = init_db(tmp_path / "t.sqlite3")
+    for seller_id in ("111", "222"):
+        add_seller_from_discovery(
+            conn, seller_id=seller_id, nickname="n", source_keyword="k", source_item_id="i"
+        )
+    conn.commit()
+    session = Session(cookies="a=1", token="t", source="t")
+    with patch("xianyu_radar.modules.scan.runner.scan_seller", return_value={"status": "ok"}), \
+         patch("xianyu_radar.modules.scan.runner.time.sleep") as sleep:
+        run_pool_once(conn, session, between_sellers_sec=2, jitter_sec=0)
+    sleep.assert_called_once_with(2)
+    conn.close()

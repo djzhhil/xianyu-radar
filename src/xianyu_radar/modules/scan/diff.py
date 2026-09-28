@@ -17,18 +17,30 @@ def diff_items(
     previous: dict[str, dict],
     current: list[SellerItem],
     *,
+    baseline: bool,
     allow_removed: bool = True,
+    missing_increment: int = 1,
 ) -> list[ItemEvent]:
     """
-    previous: item_id -> row dict with title, price, check_count, status
+    previous: item_id -> row dict with title, price, missing_count, status
     current: fresh fetch list
 
-    If previous is empty → all NEW_ITEM with is_baseline=True.
+    A baseline is the first successful full shop scan, even when discovery seeds exist.
     If current is empty and allow_removed=False → no REMOVED (caller should skip).
     """
     events: list[ItemEvent] = []
     current_map = {i.item_id: i for i in current}
-    is_baseline = len(previous) == 0
+    if baseline:
+        return [
+            ItemEvent(
+                item_id=item.item_id,
+                seller_id=seller_id,
+                event_type="NEW_ITEM",
+                new_value=item.title,
+                is_baseline=True,
+            )
+            for item in current_map.values()
+        ]
 
     for item_id, item in current_map.items():
         if item_id not in previous:
@@ -38,7 +50,7 @@ def diff_items(
                     seller_id=seller_id,
                     event_type="NEW_ITEM",
                     new_value=item.title,
-                    is_baseline=is_baseline,
+                    is_baseline=False,
                 )
             )
             continue
@@ -68,12 +80,12 @@ def diff_items(
                 )
             )
 
-    if allow_removed and not is_baseline:
+    if allow_removed:
         for item_id, prev in previous.items():
             if item_id in current_map:
                 continue
-            check_count = int(prev.get("check_count") or 0)
-            if check_count > 1 and prev.get("status") == "active":
+            misses = int(prev.get("missing_count") or 0) + missing_increment
+            if misses >= 2 and prev.get("status") == "active":
                 events.append(
                     ItemEvent(
                         item_id=item_id,

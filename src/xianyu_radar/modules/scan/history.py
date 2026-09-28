@@ -24,7 +24,7 @@ def list_scan_runs(
     total = conn.execute(f"SELECT COUNT(*) FROM scans{where}", params).fetchone()[0]
     rows = conn.execute(
         "SELECT id, seller_id, started_at, finished_at, status, error_kind, "
-        f"item_count, event_count FROM scans{where} "
+        f"item_count, event_count, expected_count, page_count, finish_reason FROM scans{where} "
         "ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
     ).fetchall()

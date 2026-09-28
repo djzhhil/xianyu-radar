@@ -43,5 +43,40 @@ def test_pagination_merges_pages() -> None:
     }
     session = Session(cookies="x=1", token="tok", source="test", cookie_count=1)
     with patch("xianyu_radar.modules.scan.fetcher.call_mtop", side_effect=[page1, page2]):
-        items = get_seller_items(session, "999", page_size=2)
-    assert [i.item_id for i in items] == ["1", "2", "3"]
+        catalog = get_seller_items(session, "999", page_size=2)
+    assert catalog.complete
+    assert catalog.page_count == 2
+    assert [i.item_id for i in catalog.items] == ["1", "2", "3"]
+
+
+def test_incomplete_catalog_reports_missing_items() -> None:
+    payload = {
+        "data": {
+            "totalCount": 3,
+            "nextPage": False,
+            "cardList": [
+                {"cardData": {"id": "1", "title": "a", "detailParams": {"itemId": "1"}}}
+            ],
+        }
+    }
+    session = Session(cookies="x=1", token="tok", source="test")
+    with patch("xianyu_radar.modules.scan.fetcher.call_mtop", return_value=payload):
+        catalog = get_seller_items(session, "999")
+    assert not catalog.complete
+    assert catalog.expected_count == 3
+    assert len(catalog.items) == 1
+
+
+def test_max_pages_without_terminal_signal_is_incomplete() -> None:
+    payload = {
+        "data": {
+            "cardList": [
+                {"cardData": {"id": "1", "title": "a", "detailParams": {"itemId": "1"}}}
+            ],
+        }
+    }
+    session = Session(cookies="x=1", token="tok", source="test")
+    with patch("xianyu_radar.modules.scan.fetcher.call_mtop", return_value=payload):
+        catalog = get_seller_items(session, "999", page_size=1, max_pages=1)
+    assert not catalog.complete
+    assert catalog.finish_reason == "max_pages"

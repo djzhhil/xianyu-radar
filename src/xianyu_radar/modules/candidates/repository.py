@@ -9,21 +9,24 @@ def list_candidates(
     conn: sqlite3.Connection,
     *,
     since_iso: str | None = None,
+    quality_flag: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
+    where = []
+    params: list[object] = []
     if since_iso:
-        rows = conn.execute(
-            "SELECT * FROM candidates WHERE last_seen_at >= ? "
-            "ORDER BY score DESC, last_seen_at DESC, candidate_id DESC LIMIT ? OFFSET ?",
-            (since_iso, limit, offset),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM candidates ORDER BY score DESC, last_seen_at DESC, candidate_id DESC "
-            "LIMIT ? OFFSET ?",
-            (limit, offset),
-        ).fetchall()
+        where.append("last_seen_at >= ?")
+        params.append(since_iso)
+    if quality_flag:
+        where.append("quality_flag = ?")
+        params.append(quality_flag)
+    clause = " WHERE " + " AND ".join(where) if where else ""
+    rows = conn.execute(
+        "SELECT * FROM candidates" + clause
+        + " ORDER BY score DESC, last_seen_at DESC, candidate_id DESC LIMIT ? OFFSET ?",
+        (*params, limit, offset),
+    ).fetchall()
     out = []
     for row in rows:
         candidate = dict(row)
@@ -36,12 +39,19 @@ def list_candidates(
     return out
 
 
-def count_candidates(conn: sqlite3.Connection, *, since_iso: str | None = None) -> int:
+def count_candidates(
+    conn: sqlite3.Connection, *, since_iso: str | None = None, quality_flag: str | None = None
+) -> int:
+    where = []
+    params: list[object] = []
     if since_iso:
-        return conn.execute(
-            "SELECT COUNT(*) FROM candidates WHERE last_seen_at >= ?", (since_iso,)
-        ).fetchone()[0]
-    return conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0]
+        where.append("last_seen_at >= ?")
+        params.append(since_iso)
+    if quality_flag:
+        where.append("quality_flag = ?")
+        params.append(quality_flag)
+    clause = " WHERE " + " AND ".join(where) if where else ""
+    return conn.execute("SELECT COUNT(*) FROM candidates" + clause, params).fetchone()[0]
 
 
 def set_candidate_status(conn: sqlite3.Connection, candidate_id: int, status: str) -> bool:

@@ -1,0 +1,4 @@
+ALTER TABLE scans ADD COLUMN expected_count INTEGER;
+ALTER TABLE scans ADD COLUMN page_count INTEGER;
+ALTER TABLE scans ADD COLUMN finish_reason TEXT;
+ALTER TABLE items ADD COLUMN missing_count INTEGER NOT NULL DEFAULT 0;

@@ -63,6 +63,9 @@ def scan_one(
         "status": result.get("status"),
         "error_kind": result.get("error_kind"),
         "item_count": result.get("item_count", 0),
+        "expected_count": result.get("expected_count"),
+        "page_count": result.get("page_count"),
+        "finish_reason": result.get("finish_reason"),
         "candidates": result.get("candidates"),
         "events": [event_to_dict(e) for e in events],
     }
@@ -94,6 +97,9 @@ def scan_pool(conn: sqlite3.Connection = Depends(get_db)) -> dict:
                 "status": r.get("status"),
                 "error_kind": r.get("error_kind"),
                 "item_count": r.get("item_count", 0),
+                "expected_count": r.get("expected_count"),
+                "page_count": r.get("page_count"),
+                "finish_reason": r.get("finish_reason"),
                 "event_count": len(events),
                 "events": [event_to_dict(e) for e in events],
             }

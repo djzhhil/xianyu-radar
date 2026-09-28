@@ -147,7 +147,11 @@ def cmd_fetch_seller(args: argparse.Namespace) -> int:
     except AuthError as e:
         print(f"AUTH_FAIL: {e}")
         return 1
-    items = get_seller_items(session, args.seller_id)
+    catalog = get_seller_items(session, args.seller_id)
+    items = catalog.items
+    if not catalog.complete:
+        print(f"INCOMPLETE: {catalog.finish_reason} pages={catalog.page_count} ", file=sys.stderr)
+        return 1
     if args.out == "json":
         print(
             json.dumps(
@@ -217,12 +221,17 @@ def cmd_candidates(args: argparse.Namespace) -> int:
             since = (now - timedelta(days=int(s[:-1]))).strftime("%Y-%m-%dT%H:%M:%SZ")
         else:
             since = args.since
-    rows = list_candidates(conn, since_iso=since, limit=args.limit)
+    rows = list_candidates(
+        conn, since_iso=since,
+        quality_flag=None if args.quality == "all" else args.quality,
+        limit=args.limit,
+    )
     conn.close()
     for r in rows:
         sellers = ",".join(r.get("source_sellers") or [])
         print(
-            f"{r['candidate_id']}\tsellers={r['seller_count']}\tscore={r['score']:.1f}\t"
+            f"{r['candidate_id']}\tquality={r['quality_flag']}\t"
+            f"sellers={r['seller_count']}\tscore={r['score']:.1f}\t"
             f"{r['sample_title']}\t[{sellers}]"
         )
     print(f"count={len(rows)}")
@@ -346,6 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("candidates", help="List candidate products")
     p.add_argument("--since", default="24h", help="e.g. 24h, 7d, or ISO time")
+    p.add_argument("--quality", choices=["all", "normal", "legacy_unverified"], default="all")
     p.add_argument("--limit", type=int, default=50)
     p.set_defaults(func=cmd_candidates)
 
