@@ -318,15 +318,24 @@ async function refreshPool() {
 async function refreshCandidates() {
   const since = $("#candSince").value;
   const quality = $("#candQuality").value;
-  const query = `?since=${encodeURIComponent(since)}&quality=${encodeURIComponent(quality)}&limit=${pageSize}&offset=${viewState.candidatesOffset}`;
+  const status = $("#candStatus").value;
+  const query = `?since=${encodeURIComponent(since)}&quality=${encodeURIComponent(quality)}&status=${encodeURIComponent(status)}&limit=${pageSize}&offset=${viewState.candidatesOffset}`;
   const data = await api(`/api/candidates${query}`);
+  $("#candTotal").textContent = data.summary.total;
+  $("#candNew").textContent = data.summary.by_status.new || 0;
+  $("#candMulti").textContent = data.summary.multi_seller;
+  $("#candValidated").textContent = data.summary.by_status.validated || 0;
   const list = $("#candList");
   list.replaceChildren();
   showPager("candidates", viewState.candidatesOffset, data.total);
   if (!data.candidates.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = data.total ? "这一页没有候选，请返回上一页。" : "暂无候选。先发现商家，再扫描商家商品。";
+    empty.textContent = data.total
+      ? "这一页没有候选，请返回上一页。"
+      : data.summary.total
+        ? "当前状态下没有候选，请调整状态筛选。"
+        : "暂无候选。先发现商家，再扫描商家商品。";
     list.appendChild(empty);
     return;
   }
@@ -529,6 +538,10 @@ $("#candSince").addEventListener("change", () => {
   refreshCandidates().catch((error) => toast(error.message));
 });
 $("#candQuality").addEventListener("change", () => {
+  viewState.candidatesOffset = 0;
+  refreshCandidates().catch((error) => toast(error.message));
+});
+$("#candStatus").addEventListener("change", () => {
   viewState.candidatesOffset = 0;
   refreshCandidates().catch((error) => toast(error.message));
 });

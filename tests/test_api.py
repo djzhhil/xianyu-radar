@@ -168,6 +168,47 @@ def test_events_and_candidates_have_stable_pages_and_totals(conn) -> None:
     assert legacy["candidates"][0]["quality_flag"] == "legacy_unverified"
 
 
+def test_candidate_overview_keeps_status_filter_out_of_summary(conn) -> None:
+    records = [
+        ("old", "2026-01-01T00:00:00Z", "legacy_unverified", "new", 1),
+        ("new", "2026-01-03T00:00:00Z", "normal", "new", 2),
+        ("validated", "2026-01-04T00:00:00Z", "normal", "validated", 3),
+        ("rejected", "2026-01-05T00:00:00Z", "normal", "rejected", 1),
+    ]
+    conn.executemany(
+        "INSERT INTO candidates(normalized_title, first_seen_at, last_seen_at, "
+        "quality_flag, status, seller_count) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (name, seen, seen, quality, status, sellers)
+            for name, seen, quality, status, sellers in records
+        ],
+    )
+    conn.commit()
+
+    overview = candidates.get_candidates(
+        since="2026-01-03T00:00:00Z", quality="normal", status="validated", conn=conn
+    )
+    assert overview["total"] == 1
+    assert [row["normalized_title"] for row in overview["candidates"]] == ["validated"]
+    assert overview["summary"] == {
+        "total": 3,
+        "multi_seller": 2,
+        "by_status": {"new": 1, "rejected": 1, "validated": 1},
+    }
+
+    candidate_id = overview["candidates"][0]["candidate_id"]
+    candidates.patch_candidate(
+        candidate_id, candidates.CandidateStatusBody(status="testing"), conn
+    )
+    updated = candidates.get_candidates(
+        since="2026-01-03T00:00:00Z", quality="normal", status="validated", conn=conn
+    )
+    assert updated["total"] == 0
+    assert updated["summary"]["by_status"] == {"new": 1, "rejected": 1, "testing": 1}
+    legacy = candidates.get_candidates(since="", quality="legacy_unverified", conn=conn)
+    assert legacy["summary"]["total"] == 1
+
+
 def test_api_database_connection_survives_worker_thread_switch(conn) -> None:
     dependency = get_db()
     api_conn = next(dependency)

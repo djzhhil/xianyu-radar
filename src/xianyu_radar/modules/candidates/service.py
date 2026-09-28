@@ -8,6 +8,7 @@ from xianyu_radar.modules.candidates.repository import (
     count_candidates,
     list_candidates,
     set_candidate_status,
+    summarize_candidates,
 )
 
 ALLOWED_STATUSES = frozenset({"new", "watching", "testing", "validated", "rejected"})

@@ -137,6 +137,14 @@ main {
   color: #f3ebe1;
 }
 .stat .l { color: var(--mist); font-size: 0.8rem; }
+.candidate-summary {
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 1rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.15);
+}
 
 .tabs {
   display: flex;
@@ -181,6 +189,8 @@ h2 {
   margin-bottom: 0.85rem;
 }
 .panel-head h2 { margin: 0; }
+#tab-candidates .panel-head { flex-wrap: wrap; }
+#tab-candidates .panel-head h2 { margin-right: auto; }
 
 .row-form {
   display: flex;

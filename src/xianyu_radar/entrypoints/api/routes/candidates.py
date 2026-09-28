@@ -22,19 +22,30 @@ class CandidateStatusBody(BaseModel):
 def get_candidates(
     since: str = "24h",
     quality: Literal["all", "normal", "legacy_unverified"] = "all",
+    status: Literal["all", "new", "watching", "testing", "validated", "rejected"] = "all",
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     since_iso = parse_since(since)
     quality_flag = None if quality == "all" else quality
+    status_filter = None if status == "all" else status
     rows = service.list_candidates(
-        conn, since_iso=since_iso, quality_flag=quality_flag, limit=limit, offset=offset
+        conn,
+        since_iso=since_iso,
+        quality_flag=quality_flag,
+        status=status_filter,
+        limit=limit,
+        offset=offset,
     )
-    total = service.count_candidates(conn, since_iso=since_iso, quality_flag=quality_flag)
+    total = service.count_candidates(
+        conn, since_iso=since_iso, quality_flag=quality_flag, status=status_filter
+    )
+    summary = service.summarize_candidates(conn, since_iso=since_iso, quality_flag=quality_flag)
     return {
         "count": len(rows), "total": total, "since": since,
-        "quality": quality, "offset": offset, "candidates": rows,
+        "quality": quality, "status": status, "offset": offset,
+        "summary": summary, "candidates": rows,
     }
 
 

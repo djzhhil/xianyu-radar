@@ -53,7 +53,7 @@ src/xianyu_radar/
 | `routes/pool.py` | 查看商家池、改变商家状态 | `pool/service.py` |
 | `routes/scan.py` | 扫描单个商家或整个商家池 | `scan/service.py`、`scan/runner.py` |
 | `routes/events.py` | 查看扫描产生的商品事件 | `scan/service.py` |
-| `routes/candidates.py` | 查看候选、改变候选审核状态 | `candidates/service.py` |
+| `routes/candidates.py` | 查看候选及概览、按审核状态筛选、改变候选审核状态 | `candidates/service.py` |
 | `routes/status.py` | 健康检查与系统概览 | 系统查询 |
 
 `routes/` 按 HTTP 地址分文件，`modules/` 按业务能力分文件。这是两种不同维度：门牌负责接请求，业务区负责完成工作。
@@ -116,7 +116,7 @@ flowchart LR
 
 ### 5. 查看候选与事件
 
-候选：`routes/candidates.py` → `candidates/service.py` → `candidates/repository.py` → `candidates`、`candidate_sellers` 表。事件：`routes/events.py` → `scan/service.py` → `scan/events.py` → `item_events` 表。这里读取先前扫描写出的结果，没有反向调用扫描执行流程。
+候选：`web/app.js` → `GET /api/candidates`（`routes/candidates.py`）→ `candidates/service.py` → `candidates/repository.py` → `candidates`、`candidate_sellers` 表。候选列表可按时间、数据质量和审核状态筛选；同一响应的 `summary` 按时间和数据质量汇总状态数量及多商家出现数量。事件：`routes/events.py` → `scan/service.py` → `scan/events.py` → `item_events` 表。这里读取先前扫描写出的结果，没有反向调用扫描执行流程。
 
 ## 阅读顺序
 

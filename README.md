@@ -49,6 +49,8 @@ data/debug/               # 调试文件
 
 数据库初始化会按版本升级；升级前请备份 `data/radar.sqlite3`。本工作区的 v1 备份存于 `data/backups/`。修复前的候选标为 `legacy_unverified`，在 Web 候选页或 `radar candidates --quality legacy_unverified` 中复核；人工审核状态仍保留。
 
+Web 候选页可按时间、数据质量和审核状态筛选；概览统计当前时间及质量范围内的候选总量、待复核数、多商家出现数和已验证数。概览基于已保存的候选记录，不代表闲鱼浏览量或想要数。
+
 ## 登录态
 
 将 Cookie 放到 `data/state/default.json`（见 `docs/session_format.md`）。
