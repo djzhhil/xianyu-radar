@@ -96,45 +96,7 @@ html, body {
 }
 .auth-pill.ok { color: #b7ebc9; border-color: rgba(61,154,106,0.45); }
 .auth-pill.bad { color: #f0c2ba; border-color: rgba(196,92,74,0.45); }
-
-.cookie-panel {
-  border-color: rgba(196, 122, 58, 0.35);
-}
-.cookie-panel:focus-within {
-  border-color: rgba(196, 122, 58, 0.7);
-}
-.cookie-status {
-  font-size: 0.8rem;
-  color: var(--mist);
-  padding: 0.25rem 0.65rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-}
-.cookie-status.ok { color: #b7ebc9; border-color: rgba(61,154,106,0.45); }
-.cookie-status.bad { color: #f0c2ba; border-color: rgba(196,92,74,0.45); }
-.cookie-status.warn { color: #f0e0a0; border-color: rgba(201,162,39,0.45); }
-
-.cookie-format-tabs {
-  display: flex;
-  gap: 0.35rem;
-  margin: 0 0 0.65rem;
-}
-.fmt-btn {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--mist);
-  padding: 0.4rem 0.8rem;
-  border-radius: 999px;
-  font: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-.fmt-btn.active {
-  background: rgba(196, 122, 58, 0.2);
-  border-color: var(--copper);
-  color: #f0d2b0;
-}
+.auth-pill:hover { background: rgba(0,0,0,0.28); transform: none; }
 
 #cookieInput {
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -159,7 +121,7 @@ main {
 
 .hero-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
 }
 .stat {
@@ -252,6 +214,7 @@ button {
 }
 button:hover { background: #d28945; transform: translateY(-1px); }
 button:active { transform: translateY(0); }
+button:disabled { opacity: 0.65; cursor: wait; transform: none; }
 button.ghost {
   background: transparent;
   color: var(--foam);
@@ -289,6 +252,17 @@ button.tiny { padding: 0.3rem 0.55rem; font-size: 0.78rem; border-radius: 8px; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.result-message { margin: 0.75rem 0; color: #b7ebc9; line-height: 1.5; }
+.result-message:empty { display: none; }
+.result-message.error { color: #f0c2ba; }
+.response-details { margin-top: 0.8rem; color: var(--mist); font-size: 0.85rem; }
+.response-details summary { width: fit-content; cursor: pointer; }
+.response-details .log { margin-top: 0.65rem; }
+.events-head { margin-top: 1.5rem; }
+.events-head h3 { margin: 0; font-size: 1rem; }
+#scanTarget { min-width: 15rem; max-width: 100%; }
+.cand select { justify-self: start; }
 
 .table-wrap { overflow: auto; }
 table {
