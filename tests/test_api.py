@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from pydantic import ValidationError
 
 from xianyu_radar import config as cfg
 from xianyu_radar.entrypoints.api.app import create_app
+from xianyu_radar.entrypoints.api.deps import get_db
 from xianyu_radar.entrypoints.api.routes import auth, candidates, discover, events, pool, scan, status
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
 from xianyu_radar.infrastructure.storage.db import init_db
@@ -40,6 +42,9 @@ def test_app_has_one_data_environment() -> None:
     paths = create_app().openapi()["paths"]
     assert "/api/health" in paths
     assert "/api/discover" in paths
+    assert "/api/discover/runs" in paths
+    assert "/api/pool/{seller_id}" in paths
+    assert "/api/scan/runs" in paths
     assert "/api/env" not in paths
     assert "/api/demo/offline-loop" not in paths
     assert "fixture" not in discover.DiscoverBody.model_fields
@@ -49,6 +54,86 @@ def test_app_has_one_data_environment() -> None:
     with pytest.raises(ValidationError):
         scan.ScanSellerBody(fixture="tests/fixtures/shop_items.json")
     assert status.health()["ok"] is True
+
+
+def test_pool_detail_and_run_history_read_stored_data(conn) -> None:
+    add_seller_from_discovery(
+        conn, seller_id="SELLER_TEST", nickname="Example", source_keyword="camera", source_item_id="seed"
+    )
+    for item_id in ("item-1", "item-2"):
+        conn.execute(
+            "INSERT INTO items(item_id, seller_id, title, price, url, first_seen_at, last_seen_at) "
+            "VALUES (?, 'SELLER_TEST', ?, '12', ?, '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')",
+            (item_id, item_id, f"https://www.goofish.com/item?id={item_id}"),
+        )
+    conn.execute(
+        "INSERT INTO discovery_runs(id, keyword, started_at, status, item_count, seller_count) "
+        "VALUES ('discover-1', 'camera', '2026-01-01T00:00:00Z', 'ok', 2, 1)"
+    )
+    conn.execute(
+        "INSERT INTO scans(id, seller_id, started_at, status, item_count, event_count) "
+        "VALUES ('scan-1', 'SELLER_TEST', '2026-01-02T00:00:00Z', 'ok', 2, 1)"
+    )
+    conn.commit()
+
+    detail = pool.get_seller_detail("SELLER_TEST", limit=1, offset=1, conn=conn)
+    assert detail["seller"]["nickname"] == "Example"
+    assert detail["entries"][0]["source_item_id"] == "seed"
+    assert detail["total_items"] == 2
+    assert len(detail["items"]) == 1
+    assert discover.get_discovery_runs(conn=conn)["runs"][0]["keyword"] == "camera"
+    assert scan.get_scan_runs(seller="SELLER_TEST", conn=conn)["runs"][0]["event_count"] == 1
+    assert scan.get_scan_runs(seller="OTHER", conn=conn)["total"] == 0
+    with pytest.raises(HTTPException) as error:
+        pool.get_seller_detail("MISSING", conn=conn)
+    assert error.value.status_code == 404
+
+
+def test_events_and_candidates_have_stable_pages_and_totals(conn) -> None:
+    add_seller_from_discovery(
+        conn, seller_id="SELLER_TEST", nickname="Example", source_keyword="camera", source_item_id=None
+    )
+    for number in range(3):
+        conn.execute(
+            "INSERT INTO item_events(item_id, seller_id, event_type, old_value, new_value, "
+            "detected_at, scan_id) VALUES (?, 'SELLER_TEST', 'PRICE_CHANGED', '10', '12', "
+            "'2026-01-02T00:00:00Z', 'scan-1')",
+            (f"item-{number}",),
+        )
+        conn.execute(
+            "INSERT INTO candidates(normalized_title, sample_title, sample_price, sample_url, "
+            "first_seen_at, last_seen_at, score) VALUES (?, ?, '12', 'https://www.goofish.com/', "
+            "'2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', 1)",
+            (f"candidate-{number}", f"Candidate {number}"),
+        )
+    conn.commit()
+
+    first_events = events.get_events(since="", limit=2, offset=0, conn=conn)
+    next_events = events.get_events(since="", limit=2, offset=2, conn=conn)
+    assert first_events["total"] == next_events["total"] == 3
+    assert len(first_events["events"]) == 2
+    assert len(next_events["events"]) == 1
+    assert first_events["events"][0]["id"] != next_events["events"][0]["id"]
+    first_candidates = candidates.get_candidates(since="", limit=2, offset=0, conn=conn)
+    next_candidates = candidates.get_candidates(since="", limit=2, offset=2, conn=conn)
+    assert first_candidates["total"] == next_candidates["total"] == 3
+    assert len(first_candidates["candidates"]) == 2
+    assert len(next_candidates["candidates"]) == 1
+    assert first_candidates["candidates"][0]["candidate_id"] != next_candidates["candidates"][0]["candidate_id"]
+
+
+def test_api_database_connection_survives_worker_thread_switch(conn) -> None:
+    dependency = get_db()
+    api_conn = next(dependency)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            count = executor.submit(
+                lambda: api_conn.execute("SELECT COUNT(*) FROM sellers").fetchone()[0]
+            ).result()
+        assert count == 0
+    finally:
+        with pytest.raises(StopIteration):
+            next(dependency)
 
 
 def test_auth_and_discover_use_the_same_data_store(conn, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/styles.css?v=20260928-simplified" />
+  <link rel="stylesheet" href="/assets/styles.css?v=20260928-data-views" />
 </head>
 <body>
   <div class="atmosphere" aria-hidden="true"></div>
@@ -58,6 +58,17 @@
         <button type="submit">开始发现</button>
       </form>
       <p class="result-message" id="discoverResult" role="status"></p>
+      <h3>本次搜索商品</h3>
+      <p class="hint">点击商家可查看已存商品。商品列表来自本次关键词搜索，不代表商家的完整商品目录。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>商品</th><th>价格</th><th>商家</th><th>商品链接</th></tr></thead>
+        <tbody id="discoverBody"><tr><td colspan="4">开始发现后在这里查看结果</td></tr></tbody>
+      </table></div>
+      <h3>最近发现记录</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>时间</th><th>关键词</th><th>商品数</th><th>商家数</th><th>结果</th></tr></thead>
+        <tbody id="discoveryRunsBody"></tbody>
+      </table></div>
       <details class="response-details">
         <summary>查看接口响应</summary>
         <pre class="log" id="discoverLog"></pre>
@@ -70,11 +81,27 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>商家 ID</th><th>昵称</th><th>来源关键词</th><th>状态</th></tr>
+            <tr><th>商家 ID</th><th>昵称</th><th>来源关键词</th><th>最近扫描</th><th>状态</th></tr>
           </thead>
           <tbody id="poolBody"></tbody>
         </table>
       </div>
+      <section class="detail" id="sellerDetail" hidden>
+        <div class="panel-head"><h3 id="sellerDetailTitle">商家详情</h3><button type="button" class="ghost tiny" id="closeSellerDetail">关闭</button></div>
+        <p class="hint" id="sellerDetailMeta"></p>
+        <h4>入池来源</h4>
+        <div class="table-wrap"><table>
+          <thead><tr><th>关键词</th><th>来源商品 ID</th><th>原因</th><th>加入时间</th></tr></thead>
+          <tbody id="sellerEntriesBody"></tbody>
+        </table></div>
+        <h4>已存商品</h4>
+        <p class="hint">这里包含关键词搜索留下的商品和商家扫描保存的商品；仅发现而未扫描的商家通常没有完整列表。</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>商品</th><th>价格</th><th>状态</th><th>来源</th><th>最近发现</th><th>链接</th></tr></thead>
+          <tbody id="sellerItemsBody"></tbody>
+        </table></div>
+        <div class="pager"><button type="button" class="ghost tiny" id="sellerItemsPrev">上一页</button><span id="sellerItemsPage"></span><button type="button" class="ghost tiny" id="sellerItemsNext">下一页</button></div>
+      </section>
     </section>
 
     <section class="panel tab-panel" id="tab-scan">
@@ -91,9 +118,15 @@
         <summary>查看扫描响应</summary>
         <pre class="log" id="scanLog"></pre>
       </details>
+      <h3>最近扫描记录</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>时间</th><th>商家 ID</th><th>商品数</th><th>事件数</th><th>结果</th></tr></thead>
+        <tbody id="scanRunsBody"></tbody>
+      </table></div>
       <div class="panel-head events-head">
         <h3>扫描事件</h3>
         <select id="evtSince" aria-label="事件时间范围">
+          <option value="">全部</option>
           <option value="24h">过去 24 小时</option>
           <option value="7d">过去 7 天</option>
         </select>
@@ -101,24 +134,26 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>时间</th><th>变化</th><th>商家 ID</th><th>商品 ID</th><th>基线</th></tr>
+            <tr><th>时间</th><th>变化</th><th>商家 ID</th><th>商品 ID</th><th>原值</th><th>新值</th><th>基线</th></tr>
           </thead>
           <tbody id="evtBody"></tbody>
         </table>
       </div>
+      <div class="pager"><button type="button" class="ghost tiny" id="eventsPrev">上一页</button><span id="eventsPage"></span><button type="button" class="ghost tiny" id="eventsNext">下一页</button></div>
     </section>
 
     <section class="panel tab-panel" id="tab-candidates">
       <div class="panel-head">
         <h2>候选商品</h2>
         <select id="candSince" aria-label="候选时间范围">
+          <option value="">全部</option>
           <option value="24h">过去 24 小时</option>
           <option value="7d">过去 7 天</option>
-          <option value="">全部</option>
         </select>
       </div>
       <p class="hint">扫描发现的新商品会出现在这里，可调整其审核状态。</p>
       <div id="candList" class="cand-list"></div>
+      <div class="pager"><button type="button" class="ghost tiny" id="candidatesPrev">上一页</button><span id="candidatesPage"></span><button type="button" class="ghost tiny" id="candidatesNext">下一页</button></div>
     </section>
   </main>
 
@@ -128,6 +163,6 @@
   </footer>
 
   <div class="toast" id="toast" hidden></div>
-  <script src="/assets/app.js?v=20260928-simplified"></script>
+  <script src="/assets/app.js?v=20260928-data-views"></script>
 </body>
 </html>

@@ -3,16 +3,26 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from xianyu_radar.entrypoints.api.deps import get_db, require_session
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
 from xianyu_radar.infrastructure.goofish.session import AuthError
-from xianyu_radar.modules.discovery.service import discover_sellers
+from xianyu_radar.modules.discovery.service import discover_sellers, list_discovery_runs
 
 router = APIRouter()
+
+
+@router.get("/runs")
+def get_discovery_runs(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    return list_discovery_runs(conn, limit=limit, offset=offset)
 
 
 class DiscoverBody(BaseModel):

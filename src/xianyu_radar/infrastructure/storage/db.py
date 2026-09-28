@@ -11,11 +11,11 @@ from xianyu_radar.config import SCHEMA_VERSION, ensure_data_dirs
 SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 
 
-def connect(db_path: Path | None = None) -> sqlite3.Connection:
+def connect(db_path: Path | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection:
     ensure_data_dirs()
     path = Path(db_path) if db_path else cfg.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -33,9 +33,9 @@ def get_schema_version(conn: sqlite3.Connection) -> int:
     return int(ver["value"]) if ver else 0
 
 
-def init_db(db_path: Path | None = None) -> sqlite3.Connection:
+def init_db(db_path: Path | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Create tables if needed. Safe to call repeatedly."""
-    conn = connect(db_path)
+    conn = connect(db_path, check_same_thread=check_same_thread)
     sql = SCHEMA_FILE.read_text(encoding="utf-8")
     conn.executescript(sql)
     current = get_schema_version(conn)

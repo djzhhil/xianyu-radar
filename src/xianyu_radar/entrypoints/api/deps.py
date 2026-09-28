@@ -13,7 +13,8 @@ from xianyu_radar.infrastructure.storage.db import init_db
 
 
 def get_db() -> Generator[sqlite3.Connection, None, None]:
-    conn = init_db()
+    # FastAPI can resume a sync generator dependency on a different worker thread.
+    conn = init_db(check_same_thread=False)
     try:
         yield conn
     finally:

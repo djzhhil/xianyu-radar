@@ -58,7 +58,9 @@ src/xianyu_radar/
 
 `routes/` 按 HTTP 地址分文件，`modules/` 按业务能力分文件。这是两种不同维度：门牌负责接请求，业务区负责完成工作。
 
-Web 页面按这五块业务区显示五个步骤：登录态、发现商家、商家池、扫描商家、候选商品。扫描产生的事件在“扫描商家”页查看；“扫描全部”和“扫描单个”共用一个扫描入口，通过选择范围区分。
+Web 页面按这五块业务区显示五个步骤：登录态、发现商家、商家池、扫描商家、候选商品。发现页显示本次搜索商品和最近发现记录；商家池可打开商家详情、入池来源和已存商品；扫描页显示最近扫描记录与事件前后值；候选页显示价格、商品链接、发现时间和审核状态。商品、事件和候选列表按页读取。扫描产生的事件在“扫描商家”页查看；“扫描全部”和“扫描单个”共用一个扫描入口，通过选择范围区分。
+
+这些展示只读本地 SQLite。对应查询入口是 `GET /api/discover/runs`、`GET /api/pool/{seller_id}`、`GET /api/scan/runs`、`GET /api/events` 和 `GET /api/candidates`；打开页面不会请求闲鱼。点击“开始发现”或“开始扫描”才进入在线流程。
 
 ### 五块业务区内部
 
@@ -67,7 +69,7 @@ Web 页面按这五块业务区显示五个步骤：登录态、发现商家、�
 | `auth/` | `service.py`：登录态查看、保存、检查 MTOP 连通性、清除认证暂停。 |
 | `discovery/` | `service.py`：发现流程编排、写入发现记录和种子商品；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。 |
 | `pool/` | `service.py`：商家列表与状态修改的业务入口。实际商家表读写由共用的 `infrastructure/storage/seller_repository.py` 完成。 |
-| `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
+| `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照、查扫描记录；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
 | `candidates/` | `service.py`：候选列表与状态修改入口；`repository.py`：候选表查询、状态更新。 |
 
 `infrastructure/goofish/session.py` 从 Cookie JSON 建立会话；`mtop.py` 计算签名并访问闲鱼接口。`infrastructure/storage/db.py` 连接和初始化 SQLite，`schema.sql` 定义表，`seller_repository.py` 读写商家池相关表，`auth_state.py` 管理认证暂停标志。发现和扫描都需要闲鱼协议；发现、商家池和扫描都需要访问商家数据，所以这些代码放在共用区域。

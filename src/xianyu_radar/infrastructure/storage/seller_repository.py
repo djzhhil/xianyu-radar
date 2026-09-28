@@ -135,6 +135,45 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
     return [dict(r) for r in rows]
 
 
+def get_pool_seller_detail(
+    conn: sqlite3.Connection, seller_id: str, *, limit: int = 20, offset: int = 0
+) -> dict | None:
+    """Read one pool seller, its discovery sources, and stored catalog page."""
+    seller = conn.execute(
+        "SELECT s.*, "
+        "(SELECT GROUP_CONCAT(DISTINCT source_keyword) FROM seller_pool_entries e "
+        " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords "
+        "FROM sellers s WHERE s.seller_id=? AND EXISTS ("
+        " SELECT 1 FROM seller_pool_entries e WHERE e.seller_id=s.seller_id AND e.active=1)",
+        (seller_id,),
+    ).fetchone()
+    if seller is None:
+        return None
+    entries = conn.execute(
+        "SELECT id, source_keyword, source_item_id, reason, joined_at, active "
+        "FROM seller_pool_entries WHERE seller_id=? ORDER BY joined_at DESC, id DESC",
+        (seller_id,),
+    ).fetchall()
+    total_items = conn.execute(
+        "SELECT COUNT(*) FROM items WHERE seller_id=?", (seller_id,)
+    ).fetchone()[0]
+    items = conn.execute(
+        "SELECT item_id, title, price, url, category, status, first_seen_at, "
+        "last_seen_at, check_count, source FROM items WHERE seller_id=? "
+        "ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, "
+        "last_seen_at DESC, item_id DESC LIMIT ? OFFSET ?",
+        (seller_id, limit, offset),
+    ).fetchall()
+    return {
+        "seller": dict(seller),
+        "entries": [dict(row) for row in entries],
+        "items": [dict(row) for row in items],
+        "total_items": total_items,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 def set_seller_status(conn: sqlite3.Connection, seller_id: str, status: str) -> bool:
     cursor = conn.execute(
         "UPDATE sellers SET status=? WHERE seller_id=?",

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from xianyu_radar.entrypoints.api.deps import get_db, parse_since
-from xianyu_radar.modules.scan.service import list_events
+from xianyu_radar.modules.scan.service import count_events, list_events
 
 router = APIRouter()
 
@@ -16,8 +17,11 @@ router = APIRouter()
 def get_events(
     since: str = "24h",
     seller: str | None = None,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    rows = list_events(conn, since_iso=parse_since(since), seller_id=seller, limit=limit)
-    return {"count": len(rows), "since": since, "events": rows}
+    since_iso = parse_since(since)
+    rows = list_events(conn, since_iso=since_iso, seller_id=seller, limit=limit, offset=offset)
+    total = count_events(conn, since_iso=since_iso, seller_id=seller)
+    return {"count": len(rows), "total": total, "since": since, "offset": offset, "events": rows}

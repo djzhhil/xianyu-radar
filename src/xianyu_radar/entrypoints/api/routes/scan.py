@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from xianyu_radar.entrypoints.api.deps import event_to_dict, get_db, require_session
 from xianyu_radar.infrastructure.storage.auth_state import is_auth_paused
+from xianyu_radar.modules.scan.history import list_scan_runs
 from xianyu_radar.modules.scan.runner import run_pool_once
 from xianyu_radar.modules.scan.service import scan_seller
 
 router = APIRouter()
+
+
+@router.get("/runs")
+def get_scan_runs(
+    seller: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    return list_scan_runs(conn, seller_id=seller, limit=limit, offset=offset)
 
 
 class ScanSellerBody(BaseModel):

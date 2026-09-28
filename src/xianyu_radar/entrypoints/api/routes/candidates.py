@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from xianyu_radar.entrypoints.api.deps import get_db, parse_since
@@ -20,11 +21,14 @@ class CandidateStatusBody(BaseModel):
 @router.get("")
 def get_candidates(
     since: str = "24h",
-    limit: int = 50,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    rows = service.list_candidates(conn, since_iso=parse_since(since), limit=limit)
-    return {"count": len(rows), "since": since, "candidates": rows}
+    since_iso = parse_since(since)
+    rows = service.list_candidates(conn, since_iso=since_iso, limit=limit, offset=offset)
+    total = service.count_candidates(conn, since_iso=since_iso)
+    return {"count": len(rows), "total": total, "since": since, "offset": offset, "candidates": rows}
 
 
 @router.patch("/{candidate_id}")

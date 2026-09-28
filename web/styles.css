@@ -263,6 +263,16 @@ button.tiny { padding: 0.3rem 0.55rem; font-size: 0.78rem; border-radius: 8px; }
 .events-head h3 { margin: 0; font-size: 1rem; }
 #scanTarget { min-width: 15rem; max-width: 100%; }
 .cand select { justify-self: start; }
+h3 { margin: 1.5rem 0 0.7rem; font-size: 1.05rem; }
+h4 { margin: 1.2rem 0 0.6rem; font-size: 0.95rem; }
+.detail { margin-top: 1.35rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.detail .panel-head h3 { margin: 0; }
+.detail[hidden] { display: none; }
+.text-button { max-width: 16rem; overflow-wrap: anywhere; text-align: left; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 0.6rem; margin-top: 0.8rem; color: var(--mist); font-size: 0.84rem; }
+.cand-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.8rem; margin-top: 0.45rem; }
+.table-wrap a, .cand a { color: #f0d2b0; }
+td { overflow-wrap: anywhere; }
 
 .table-wrap { overflow: auto; }
 table {

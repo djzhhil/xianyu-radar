@@ -15,7 +15,7 @@ from xianyu_radar.modules.scan.history import write_snapshots
 from xianyu_radar.modules.scan.item_repository import load_active_items, mark_removed, upsert_seller_item
 from xianyu_radar.models import ItemEvent, SellerItem
 from xianyu_radar.modules.scan.fetcher import get_seller_items
-from xianyu_radar.modules.scan.events import list_events
+from xianyu_radar.modules.scan.events import count_events, list_events
 
 
 def _now() -> str:

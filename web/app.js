@@ -13,6 +13,14 @@ const candidateStatuses = {
   validated: "已验证",
   rejected: "已排除",
 };
+const eventTypes = {
+  NEW_ITEM: "新增商品", REMOVED_ITEM: "商品下架", PRICE_CHANGED: "价格变化", TITLE_CHANGED: "标题变化",
+};
+const itemStatuses = { active: "在售", removed: "已下架", unknown: "未知" };
+const itemSources = { discovery: "关键词发现", seller_scan: "商家扫描" };
+const runStatuses = { running: "进行中", ok: "成功", failed: "失败" };
+const pageSize = 20;
+const viewState = { sellerId: null, sellerOffset: 0, eventsOffset: 0, candidatesOffset: 0 };
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -132,6 +140,107 @@ function addCell(row, value, asCode = false) {
   return cell;
 }
 
+function addEmptyRow(body, message, columns) {
+  const row = document.createElement("tr");
+  addCell(row, message).colSpan = columns;
+  body.appendChild(row);
+}
+
+function safeLink(url, label = "查看商品") {
+  try {
+    const target = new URL(url);
+    if (!["http:", "https:"].includes(target.protocol)) throw new Error("unsupported URL");
+    const link = document.createElement("a");
+    link.href = target.href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = label;
+    return link;
+  } catch {
+    return document.createTextNode("—");
+  }
+}
+
+function addLinkCell(row, url, label = "查看商品") {
+  const cell = document.createElement("td");
+  cell.appendChild(safeLink(url, label));
+  row.appendChild(cell);
+}
+
+function showPager(prefix, offset, total) {
+  const page = Math.floor(offset / pageSize) + 1;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  $(`#${prefix}Page`).textContent = `第 ${page} / ${pages} 页 · 共 ${total} 条`;
+  $(`#${prefix}Prev`).disabled = offset === 0;
+  $(`#${prefix}Next`).disabled = offset + pageSize >= total;
+}
+
+function renderDiscoverItems(items) {
+  const body = $("#discoverBody");
+  body.replaceChildren();
+  if (!items.length) return addEmptyRow(body, "本次搜索没有可展示的商品", 4);
+  for (const item of items) {
+    const row = document.createElement("tr");
+    addCell(row, item.title || item.item_id || "—");
+    addCell(row, item.price);
+    const sellerCell = document.createElement("td");
+    if (item.seller_id) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost tiny text-button";
+      button.textContent = item.seller_nick || item.seller_id;
+      button.addEventListener("click", () => openSeller(item.seller_id).catch((error) => toast(error.message)));
+      sellerCell.appendChild(button);
+    } else {
+      sellerCell.textContent = "未识别";
+    }
+    row.appendChild(sellerCell);
+    addLinkCell(row, item.url);
+    body.appendChild(row);
+  }
+}
+
+async function refreshDiscoveryRuns() {
+  const data = await api("/api/discover/runs?limit=10");
+  const body = $("#discoveryRunsBody");
+  body.replaceChildren();
+  if (!data.runs.length) return addEmptyRow(body, "暂无发现记录", 5);
+  for (const run of data.runs) {
+    const row = document.createElement("tr");
+    [run.started_at, run.keyword, run.item_count, run.seller_count, runStatuses[run.status] || run.status].forEach((value) => addCell(row, value));
+    body.appendChild(row);
+  }
+}
+
+async function openSeller(sellerId, offset = 0, activate = true) {
+  const data = await api(`/api/pool/${encodeURIComponent(sellerId)}?limit=${pageSize}&offset=${offset}`);
+  viewState.sellerId = sellerId;
+  viewState.sellerOffset = offset;
+  const seller = data.seller;
+  $("#sellerDetail").hidden = false;
+  $("#sellerDetailTitle").textContent = `${seller.nickname || seller.seller_id} · ${seller.seller_id}`;
+  $("#sellerDetailMeta").textContent = `状态：${poolStatuses[seller.status] || seller.status} · 最近扫描：${seller.last_scan_at || "暂无"} · 连续失败：${seller.consecutive_failures || 0} · 已存商品：${data.total_items}`;
+  const entriesBody = $("#sellerEntriesBody");
+  entriesBody.replaceChildren();
+  if (!data.entries.length) addEmptyRow(entriesBody, "暂无入池记录", 4);
+  for (const entry of data.entries) {
+    const row = document.createElement("tr");
+    [entry.source_keyword, entry.source_item_id, entry.reason, entry.joined_at].forEach((value) => addCell(row, value));
+    entriesBody.appendChild(row);
+  }
+  const itemsBody = $("#sellerItemsBody");
+  itemsBody.replaceChildren();
+  if (!data.items.length) addEmptyRow(itemsBody, "暂无已存商品。请先扫描该商家。", 6);
+  for (const item of data.items) {
+    const row = document.createElement("tr");
+    [item.title || item.item_id, item.price, itemStatuses[item.status] || item.status, itemSources[item.source] || item.source, item.last_seen_at].forEach((value) => addCell(row, value));
+    addLinkCell(row, item.url);
+    itemsBody.appendChild(row);
+  }
+  showPager("sellerItems", offset, data.total_items);
+  if (activate) activateTab("pool");
+}
+
 function addOption(select, value, label) {
   const option = document.createElement("option");
   option.value = value;
@@ -149,17 +258,22 @@ async function refreshPool() {
   addOption(scanTarget, "", "全部监控商家");
 
   if (!data.sellers.length) {
-    const row = document.createElement("tr");
-    const cell = addCell(row, "暂无商家，请先到“发现商家”输入关键词");
-    cell.colSpan = 4;
-    body.appendChild(row);
+    addEmptyRow(body, "暂无商家，请先到“发现商家”输入关键词", 5);
   }
 
   for (const seller of data.sellers) {
     const row = document.createElement("tr");
-    addCell(row, seller.seller_id, true);
+    const sellerCell = document.createElement("td");
+    const detailButton = document.createElement("button");
+    detailButton.type = "button";
+    detailButton.className = "ghost tiny text-button";
+    detailButton.textContent = seller.seller_id;
+    detailButton.addEventListener("click", () => openSeller(seller.seller_id).catch((error) => toast(error.message)));
+    sellerCell.appendChild(detailButton);
+    row.appendChild(sellerCell);
     addCell(row, seller.nickname || "—");
     addCell(row, seller.keywords || "—");
+    addCell(row, seller.last_scan_at);
 
     const statusCell = document.createElement("td");
     const select = document.createElement("select");
@@ -178,6 +292,7 @@ async function refreshPool() {
         });
         toast("商家状态已更新");
         await Promise.all([refreshPool(), refreshStatus()]);
+        if (viewState.sellerId === seller.seller_id) await openSeller(seller.seller_id, viewState.sellerOffset);
       } catch (error) {
         select.value = oldStatus;
         toast(error.message);
@@ -193,18 +308,23 @@ async function refreshPool() {
   if ([...scanTarget.options].some((option) => option.value === selected)) {
     scanTarget.value = selected;
   }
+  if (viewState.sellerId && !data.sellers.some((seller) => seller.seller_id === viewState.sellerId)) {
+    viewState.sellerId = null;
+    $("#sellerDetail").hidden = true;
+  }
 }
 
 async function refreshCandidates() {
   const since = $("#candSince").value;
-  const query = since ? `?since=${encodeURIComponent(since)}` : "?since=3650d";
+  const query = `?since=${encodeURIComponent(since)}&limit=${pageSize}&offset=${viewState.candidatesOffset}`;
   const data = await api(`/api/candidates${query}`);
   const list = $("#candList");
   list.replaceChildren();
+  showPager("candidates", viewState.candidatesOffset, data.total);
   if (!data.candidates.length) {
     const empty = document.createElement("p");
     empty.className = "hint";
-    empty.textContent = "暂无候选。先发现商家，再扫描商家商品。";
+    empty.textContent = data.total ? "这一页没有候选，请返回上一页。" : "暂无候选。先发现商家，再扫描商家商品。";
     list.appendChild(empty);
     return;
   }
@@ -217,10 +337,16 @@ async function refreshCandidates() {
     title.textContent = candidate.sample_title || candidate.normalized_title || "未命名商品";
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = `来源商家 ${candidate.seller_count} · 出现 ${candidate.appearance_count} 次 · 评分 ${Number(candidate.score || 0).toFixed(1)}`;
+    meta.textContent = `参考价格 ${candidate.sample_price || "—"} · 来源商家 ${candidate.seller_count} · 出现 ${candidate.appearance_count} 次 · 评分 ${Number(candidate.score || 0).toFixed(1)}`;
     const sources = document.createElement("div");
     sources.className = "meta";
-    sources.textContent = (candidate.source_sellers || []).join("、");
+    sources.textContent = `商家：${(candidate.source_sellers || []).join("、") || "—"}`;
+    const dates = document.createElement("div");
+    dates.className = "meta";
+    dates.textContent = `首次发现 ${candidate.first_seen_at || "—"} · 最近发现 ${candidate.last_seen_at || "—"}`;
+    const actions = document.createElement("div");
+    actions.className = "cand-actions";
+    actions.appendChild(safeLink(candidate.sample_url));
     const status = document.createElement("select");
     status.setAttribute("aria-label", `候选商品 ${title.textContent} 的状态`);
     for (const [value, label] of Object.entries(candidateStatuses)) {
@@ -244,29 +370,41 @@ async function refreshCandidates() {
         status.disabled = false;
       }
     });
-    card.append(title, meta, sources, status);
+    actions.appendChild(status);
+    card.append(title, meta, sources, dates, actions);
     list.appendChild(card);
+  }
+}
+
+async function refreshScanRuns() {
+  const data = await api("/api/scan/runs?limit=10");
+  const body = $("#scanRunsBody");
+  body.replaceChildren();
+  if (!data.runs.length) return addEmptyRow(body, "暂无扫描记录", 5);
+  for (const run of data.runs) {
+    const row = document.createElement("tr");
+    [run.started_at, run.seller_id, run.item_count, run.event_count, run.error_kind || runStatuses[run.status] || run.status].forEach((value) => addCell(row, value));
+    body.appendChild(row);
   }
 }
 
 async function refreshEvents() {
   const since = $("#evtSince").value;
-  const data = await api(`/api/events?since=${encodeURIComponent(since)}`);
+  const data = await api(`/api/events?since=${encodeURIComponent(since)}&limit=${pageSize}&offset=${viewState.eventsOffset}`);
   const body = $("#evtBody");
   body.replaceChildren();
+  showPager("events", viewState.eventsOffset, data.total);
   if (!data.events.length) {
-    const row = document.createElement("tr");
-    const cell = addCell(row, "暂无扫描事件");
-    cell.colSpan = 5;
-    body.appendChild(row);
-    return;
+    return addEmptyRow(body, data.total ? "这一页没有事件，请返回上一页。" : "暂无扫描事件", 7);
   }
   for (const event of data.events) {
     const row = document.createElement("tr");
     addCell(row, event.detected_at);
-    addCell(row, event.event_type);
+    addCell(row, eventTypes[event.event_type] || event.event_type);
     addCell(row, event.seller_id, true);
     addCell(row, event.item_id, true);
+    addCell(row, event.old_value);
+    addCell(row, event.new_value);
     addCell(row, event.is_baseline ? "是" : "否");
     body.appendChild(row);
   }
@@ -274,8 +412,9 @@ async function refreshEvents() {
 
 async function refreshAll() {
   const [status] = await Promise.all([
-    refreshStatus(), refreshPool(), refreshCandidates(), refreshEvents(),
+    refreshStatus(), refreshPool(), refreshCandidates(), refreshEvents(), refreshDiscoveryRuns(), refreshScanRuns(),
   ]);
+  if (viewState.sellerId) await openSeller(viewState.sellerId, viewState.sellerOffset, false);
   return status;
 }
 
@@ -320,6 +459,7 @@ $("#discoverForm").addEventListener("submit", (event) => {
         body: JSON.stringify({ keyword }),
       });
       setLog("#discoverLog", result);
+      renderDiscoverItems(result.items || []);
       const extra = result.validation_required ? "；闲鱼要求人机验证，已保留识别成功的商家" : "";
       const message = `搜索商品 ${result.item_count} 条，新增商家 ${result.new_sellers} 个，未识别卖家 ${result.skipped_no_seller} 条${extra}。`;
       setResult("#discoverResult", message);
@@ -358,8 +498,35 @@ $("#btnScan").addEventListener("click", () => withBusy($("#btnScan"), "扫描中
   }
 }));
 
-$("#candSince").addEventListener("change", () => refreshCandidates().catch((error) => toast(error.message)));
-$("#evtSince").addEventListener("change", () => refreshEvents().catch((error) => toast(error.message)));
+$("#closeSellerDetail").addEventListener("click", () => {
+  viewState.sellerId = null;
+  $("#sellerDetail").hidden = true;
+});
+for (const [id, delta] of [["sellerItemsPrev", -1], ["sellerItemsNext", 1]]) {
+  $(`#${id}`).addEventListener("click", () => openSeller(viewState.sellerId, viewState.sellerOffset + delta * pageSize).catch((error) => toast(error.message)));
+}
+for (const [prefix, stateKey, refresh] of [
+  ["events", "eventsOffset", refreshEvents],
+  ["candidates", "candidatesOffset", refreshCandidates],
+]) {
+  for (const [direction, delta] of [["Prev", -1], ["Next", 1]]) {
+    $(`#${prefix}${direction}`).addEventListener("click", () => {
+      viewState[stateKey] += delta * pageSize;
+      refresh().catch((error) => {
+        viewState[stateKey] -= delta * pageSize;
+        toast(error.message);
+      });
+    });
+  }
+}
+$("#candSince").addEventListener("change", () => {
+  viewState.candidatesOffset = 0;
+  refreshCandidates().catch((error) => toast(error.message));
+});
+$("#evtSince").addEventListener("change", () => {
+  viewState.eventsOffset = 0;
+  refreshEvents().catch((error) => toast(error.message));
+});
 
 refreshAll()
   .then((status) => { if (status.auth.ok) activateTab("discover"); })

@@ -21,6 +21,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def list_discovery_runs(
+    conn: sqlite3.Connection, *, limit: int = 20, offset: int = 0
+) -> dict:
+    total = conn.execute("SELECT COUNT(*) FROM discovery_runs").fetchone()[0]
+    rows = conn.execute(
+        "SELECT id, keyword, started_at, finished_at, item_count, seller_count, status "
+        "FROM discovery_runs ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?",
+        (limit, offset),
+    ).fetchall()
+    return {"total": total, "runs": [dict(row) for row in rows], "limit": limit, "offset": offset}
+
+
 def _is_user_validation_error(exc: MtopError) -> bool:
     return "FAIL_SYS_USER_VALIDATE" in str(exc.ret) or "x5sec" in str(exc).lower()
 

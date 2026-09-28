@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 from xianyu_radar.infrastructure.storage.seller_repository import (
+    get_pool_seller_detail,
     list_pool,
     set_seller_status,
 )

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 
-from xianyu_radar.modules.candidates.repository import list_candidates, set_candidate_status
+from xianyu_radar.modules.candidates.repository import (
+    count_candidates,
+    list_candidates,
+    set_candidate_status,
+)
 
 ALLOWED_STATUSES = frozenset({"new", "watching", "testing", "validated", "rejected"})
 
