@@ -45,8 +45,24 @@ def list_candidates(
             (candidate["candidate_id"],),
         ).fetchall()
         candidate["source_sellers"] = [seller["seller_id"] for seller in sellers]
+        types = conn.execute(
+            "SELECT source_type,COUNT(*) AS count FROM candidate_sources WHERE candidate_id=? GROUP BY source_type",
+            (candidate["candidate_id"],),
+        ).fetchall()
+        candidate["source_types"] = {row["source_type"]: row["count"] for row in types}
         out.append(candidate)
     return out
+
+
+def list_sources(conn: sqlite3.Connection, candidate_id: int, *, limit: int = 20, offset: int = 0) -> dict | None:
+    if not conn.execute("SELECT 1 FROM candidates WHERE candidate_id=?", (candidate_id,)).fetchone():
+        return None
+    total = conn.execute("SELECT COUNT(*) FROM candidate_sources WHERE candidate_id=?", (candidate_id,)).fetchone()[0]
+    rows = conn.execute(
+        "SELECT c.*,s.nickname FROM candidate_sources c LEFT JOIN sellers s ON s.seller_id=c.seller_id "
+        "WHERE candidate_id=? ORDER BY source_id DESC LIMIT ? OFFSET ?", (candidate_id, limit, offset),
+    ).fetchall()
+    return {"sources": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset}
 
 
 def count_candidates(

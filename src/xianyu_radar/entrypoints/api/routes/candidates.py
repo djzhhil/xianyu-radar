@@ -18,6 +18,17 @@ class CandidateStatusBody(BaseModel):
     status: str
 
 
+@router.get("/{candidate_id}/sources")
+def get_sources(
+    candidate_id: int, limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0, conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    result = service.list_sources(conn, candidate_id, limit=limit, offset=offset)
+    if result is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    return result
+
+
 @router.get("")
 def get_candidates(
     since: str = "24h",

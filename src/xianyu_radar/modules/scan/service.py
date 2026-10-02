@@ -138,7 +138,7 @@ def apply_scan_result(
 
     _write_events(conn, events, scan_id)
     cand_stats = process_new_item_events(
-        conn, events, current_by_id={i.item_id: i for i in current}, keyword_hints=keyword_hints
+        conn, events, current_by_id={i.item_id: i for i in current}, keyword_hints=keyword_hints, scan_id=scan_id
     )
 
     conn.execute(

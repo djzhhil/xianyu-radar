@@ -81,6 +81,7 @@ def test_v2_candidates_are_flagged_without_changing_review_status(tmp_path: Path
     conn = init_db(db_path)
     row = conn.execute("SELECT quality_flag, status FROM candidates").fetchone()
     assert tuple(row) == ("legacy_unverified", "rejected")
+    assert conn.execute("SELECT COUNT(*) FROM candidate_sources").fetchone()[0] == 0
     assert get_schema_version(conn) == SCHEMA_VERSION
     conn.close()
 
