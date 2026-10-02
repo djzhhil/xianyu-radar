@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from datetime import datetime, timezone
 
 from xianyu_radar.models import SeedItem
@@ -132,7 +133,23 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
             " WHERE e.seller_id=s.seller_id AND e.active=1) AS keywords "
             f"FROM sellers s WHERE {membership} ORDER BY s.last_seen_at DESC"
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [_seller_record(r) for r in rows]
+
+
+def _seller_record(row: sqlite3.Row) -> dict:
+    record = dict(row)
+    record["tags"] = json.loads(record["tags"])
+    return record
+
+
+def set_seller_metadata(conn: sqlite3.Connection, seller_id: str, notes: str, tags: list[str]) -> bool:
+    with conn:
+        result = conn.execute(
+            "UPDATE sellers SET notes=?, tags=? WHERE seller_id=? AND EXISTS ("
+            "SELECT 1 FROM seller_pool_entries WHERE seller_id=? AND active=1)",
+            (notes, json.dumps(tags, ensure_ascii=False), seller_id, seller_id),
+        )
+    return result.rowcount > 0
 
 
 def add_manual_seller(conn: sqlite3.Connection, seller_id: str, nickname: str | None) -> bool:
@@ -186,7 +203,7 @@ def get_pool_seller_detail(
         (seller_id, limit, offset),
     ).fetchall()
     return {
-        "seller": dict(seller),
+        "seller": _seller_record(seller),
         "entries": [dict(row) for row in entries],
         "items": [dict(row) for row in items],
         "total_items": total_items,

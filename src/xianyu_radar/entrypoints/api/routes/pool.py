@@ -23,6 +23,24 @@ class AddSellerBody(BaseModel):
     nickname: str | None = Field(default=None, max_length=100)
 
 
+class SellerMetadataBody(BaseModel):
+    notes: str = Field(max_length=2000)
+    tags: list[str] = Field(max_length=20)
+
+
+@router.patch("/{seller_id}/metadata")
+def patch_metadata(
+    seller_id: str, body: SellerMetadataBody, conn: sqlite3.Connection = Depends(get_db)
+) -> dict:
+    try:
+        updated = service.change_metadata(conn, seller_id, body.notes, body.tags)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if not updated:
+        raise HTTPException(status_code=404, detail="seller not found in pool")
+    return {"seller_id": seller_id, "updated": True}
+
+
 @router.post("")
 def add_seller(body: AddSellerBody, conn: sqlite3.Connection = Depends(get_db)) -> dict:
     try:

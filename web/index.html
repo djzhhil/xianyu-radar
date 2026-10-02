@@ -96,6 +96,14 @@
       <section class="detail" id="sellerDetail" hidden>
         <div class="panel-head"><h3 id="sellerDetailTitle">商家详情</h3><button type="button" class="ghost tiny" id="closeSellerDetail">关闭</button></div>
         <p class="hint" id="sellerDetailMeta"></p>
+        <form id="sellerMetadataForm">
+          <label for="sellerTags">标签</label>
+          <input type="text" id="sellerTags" placeholder="FDE, 重点参考" maxlength="1000" />
+          <label for="sellerNotes">备注</label>
+          <textarea id="sellerNotes" rows="3" maxlength="2000"></textarea>
+          <button type="submit">保存备注与标签</button>
+          <p class="result-message" id="sellerMetadataResult" role="status"></p>
+        </form>
         <h4>入池来源</h4>
         <div class="table-wrap"><table>
           <thead><tr><th>关键词</th><th>来源商品 ID</th><th>原因</th><th>加入时间</th></tr></thead>

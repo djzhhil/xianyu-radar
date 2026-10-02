@@ -248,6 +248,9 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   viewState.sellerId = sellerId;
   viewState.sellerOffset = offset;
   const seller = data.seller;
+  $("#sellerTags").value = (seller.tags || []).join(", ");
+  $("#sellerNotes").value = seller.notes || "";
+  setResult("#sellerMetadataResult", "");
   $("#sellerDetail").hidden = false;
   $("#sellerDetailTitle").textContent = `${seller.nickname || seller.seller_id} · ${seller.seller_id}`;
   $("#sellerDetailMeta").textContent = `状态：${poolStatuses[seller.status] || seller.status} · 最近扫描：${seller.last_scan_at || "暂无"} · 连续失败：${seller.consecutive_failures || 0} · 已存商品：${data.total_items}`;
@@ -302,7 +305,7 @@ async function refreshPool() {
     detailButton.addEventListener("click", () => openSeller(seller.seller_id).catch((error) => toast(error.message)));
     sellerCell.appendChild(detailButton);
     row.appendChild(sellerCell);
-    addCell(row, seller.nickname || "—");
+    addCell(row, [seller.nickname || "—", ...(seller.tags || [])].join(" · "));
     addCell(row, seller.keywords || "—");
     addCell(row, seller.last_scan_at);
 
@@ -531,6 +534,22 @@ $("#addSellerForm").addEventListener("submit", (event) => {
       await openSeller(result.seller_id);
     } catch (error) {
       setResult("#addSellerResult", error.message, true);
+    }
+  });
+});
+
+$("#sellerMetadataForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const sellerId = viewState.sellerId;
+  if (!sellerId) return;
+  const payload = { notes: $("#sellerNotes").value, tags: $("#sellerTags").value.split(/[,，]/).map(tag => tag.trim()).filter(Boolean) };
+  withBusy(event.currentTarget.querySelector('button[type="submit"]'), "保存中…", async () => {
+    try {
+      await api(`/api/pool/${encodeURIComponent(sellerId)}/metadata`, { method: "PATCH", body: JSON.stringify(payload) });
+      await refreshPool();
+      if (viewState.sellerId === sellerId) setResult("#sellerMetadataResult", "备注与标签已保存");
+    } catch (error) {
+      if (viewState.sellerId === sellerId) setResult("#sellerMetadataResult", error.message, true);
     }
   });
 });

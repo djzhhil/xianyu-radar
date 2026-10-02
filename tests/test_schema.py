@@ -58,6 +58,7 @@ def test_v1_database_migrates_without_losing_rows(tmp_path: Path) -> None:
     assert conn.execute("SELECT COUNT(*) FROM sellers").fetchone()[0] == 1
     assert "missing_count" in {row["name"] for row in conn.execute("PRAGMA table_info(items)")}
     assert "expected_count" in {row["name"] for row in conn.execute("PRAGMA table_info(scans)")}
+    assert tuple(conn.execute("SELECT notes,tags FROM sellers WHERE seller_id='s1'").fetchone()) == ("", "[]")
     conn.close()
 
 

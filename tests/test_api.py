@@ -72,6 +72,24 @@ def test_manual_seller_add_is_idempotent_and_preserves_paused_state(conn) -> Non
     assert pool.get_seller_detail("12345", conn=conn)["seller"]["nickname"] == "示例"
 
 
+def test_seller_metadata_normalizes_tags_and_survives_repeat_add(conn) -> None:
+    pool.add_seller(pool.AddSellerBody(reference="12345"), conn)
+    pool.patch_metadata("12345", pool.SellerMetadataBody(notes="  已验证的同品商家  ", tags=[" FDE ", "FDE", "重点", ""]), conn)
+    pool.add_seller(pool.AddSellerBody(reference="12345"), conn)
+    seller = pool.get_seller_detail("12345", conn=conn)["seller"]
+    assert seller["notes"] == "已验证的同品商家"
+    assert seller["tags"] == ["FDE", "重点"]
+    assert pool.get_pool(conn=conn)["sellers"][0]["tags"] == ["FDE", "重点"]
+    with pytest.raises(HTTPException) as error:
+        pool.patch_metadata("missing", pool.SellerMetadataBody(notes="", tags=[]), conn)
+    assert error.value.status_code == 404
+    with pytest.raises(HTTPException):
+        pool.patch_metadata("12345", pool.SellerMetadataBody(notes="", tags=["a" * 41]), conn)
+    assert pool.get_seller_detail("12345", conn=conn)["seller"]["tags"] == ["FDE", "重点"]
+    pool.patch_metadata("12345", pool.SellerMetadataBody(notes="", tags=[]), conn)
+    assert pool.get_seller_detail("12345", conn=conn)["seller"]["tags"] == []
+
+
 @pytest.mark.parametrize("reference", ["0", "unknown:123", "１２３", "-1",
     "https://evil.example/personal?userId=123", "https://www.goofish.com/item?id=123",
     "https://www.goofish.com/personal?userId=123&userId=456"])

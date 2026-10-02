@@ -11,6 +11,7 @@ from xianyu_radar.infrastructure.storage.seller_repository import (
     list_pool,
     set_seller_status,
     add_manual_seller,
+    set_seller_metadata,
 )
 
 ALLOWED_STATUSES = frozenset({"watching", "paused", "dropped"})
@@ -40,3 +41,11 @@ def change_status(conn: sqlite3.Connection, seller_id: str, status: str) -> bool
     if status not in ALLOWED_STATUSES:
         raise ValueError("invalid status")
     return set_seller_status(conn, seller_id, status)
+
+
+def change_metadata(conn: sqlite3.Connection, seller_id: str, notes: str, tags: list[str]) -> bool:
+    notes = notes.strip()
+    tags = list(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))
+    if len(notes) > 2000 or len(tags) > 20 or any(len(tag) > 40 for tag in tags):
+        raise ValueError("备注最多 2000 字，标签最多 20 个，每个标签最多 40 字")
+    return set_seller_metadata(conn, seller_id, notes, tags)
