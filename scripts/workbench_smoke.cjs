@@ -19,7 +19,8 @@ conn.execute("INSERT INTO sellers(seller_id,first_seen_at,last_seen_at) VALUES (
 conn.executemany("INSERT INTO items(item_id,seller_id,title,status,first_seen_at,last_seen_at) VALUES (?,'12345',?,?, 't','t')", [(str(i),"FDE "+str(i),"removed" if i==24 else "active") for i in range(25)])
 conn.execute("UPDATE items SET image='https://images.example.test/good.png' WHERE item_id='24'")
 conn.execute("UPDATE items SET image='https://images.example.test/broken.png' WHERE item_id='23'")
-conn.execute("INSERT INTO scans(id,seller_id,started_at,status,item_count) VALUES ('ok','12345','t','ok',25)")
+conn.execute("INSERT INTO scans(id,seller_id,started_at,status,item_count,finish_reason) VALUES ('ok','12345','t','ok',25,'end_marker')")
+conn.execute("INSERT INTO item_snapshots(item_id,seller_id,title,price,image,captured_at,scan_id) SELECT item_id,seller_id,title,COALESCE(price,''),image,'2026-10-02T00:00:00Z','ok' FROM items")
 conn.execute("INSERT INTO scans(id,seller_id,started_at,status,error_kind) VALUES ('bad','12345','t','failed','incomplete')")
 conn.executemany("INSERT INTO candidates(normalized_title,sample_title,first_seen_at,last_seen_at,status) VALUES (?,?, '2026-10-02T00:00:00Z','2026-10-02T00:00:00Z',?)", [("fde-interview","FDE 面试资料","new"),("fde-project","FDE 项目案例","testing"),("fde-learning","FDE 学习资料","validated")])
 conn.commit()
@@ -77,6 +78,12 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     assert.match(await page.locator('#sellerCatalogQuality').innerText(), /最近完整扫描.*分页不完整/);
     await page.locator('#sellerItemsBody img').scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.querySelector('#sellerItemsBody img')?.naturalWidth > 0);
+    await page.check('.catalog-select');
+    await page.click('#addCatalogCandidates');
+    await page.waitForFunction(() => document.querySelector('#catalogSelectionResult').textContent.includes('新增 1'));
+    await page.check('.catalog-select');
+    await page.click('#addCatalogCandidates');
+    await page.waitForFunction(() => document.querySelector('#catalogSelectionResult').textContent.includes('已存在 1'));
     await page.fill('#sellerItemQuery', 'FDE 23');
     await page.selectOption('#sellerItemStatus', 'active');
     await page.click('#sellerItemFilters button');
@@ -121,7 +128,11 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     await page.selectOption('.cand select', 'validated');
     await page.waitForFunction(() => document.querySelectorAll('.cand').length === 0);
     await page.selectOption('#candStatus', 'all');
-    await page.waitForFunction(() => document.querySelectorAll('.cand').length === 3);
+    await page.waitForFunction(() => document.querySelectorAll('.cand').length === 4);
+    const manual = page.locator('.cand').filter({ hasText: 'FDE 24' });
+    await manual.locator('summary').click();
+    await manual.locator('.source-row').waitFor();
+    assert.match(await manual.locator('.source-row').innerText(), /存量选品/);
     await page.screenshot({ path: `${artifactDir}/workbench-candidates-desktop.png`, fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: `${artifactDir}/workbench-candidates-mobile.png`, fullPage: true });

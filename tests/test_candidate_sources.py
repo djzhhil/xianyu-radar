@@ -5,6 +5,10 @@ from xianyu_radar.models import SellerItem
 from xianyu_radar.modules.scan.service import apply_scan_result
 from xianyu_radar.modules.candidates.service import list_sources, list_candidates
 from xianyu_radar.infrastructure.storage.candidate_repository import add_candidate_source
+from xianyu_radar.modules.candidates.service import select_catalog
+from xianyu_radar.modules.pool.service import add_seller
+from xianyu_radar.modules.scan.models import SellerCatalog
+import pytest
 
 
 def test_new_item_sources_keep_each_product_and_scan(tmp_path):
@@ -38,4 +42,40 @@ def test_reliable_source_does_not_promote_legacy_quality_or_review(tmp_path):
     assert candidate["status"] == "rejected"
     assert candidate["quality_flag"] == "legacy_unverified"
     assert candidate["source_types"] == {"new_item": 1}
+    conn.close()
+
+
+def test_manual_catalog_selection_is_atomic_and_does_not_create_new_events(tmp_path):
+    conn = init_db(tmp_path / "manual.sqlite3")
+    add_seller(conn, "12345")
+    items = [SellerItem("1", "FDE 存量", "10", "https://www.goofish.com/item?id=1")]
+    apply_scan_result(conn, "12345", items, scan_id="baseline", catalog=SellerCatalog(items, 1, 1, "end_marker", True))
+    before = conn.execute("SELECT COUNT(*) FROM item_events").fetchone()[0]
+    with pytest.raises(ValueError):
+        select_catalog(conn, "12345", "baseline", ["1", "missing"])
+    assert list_candidates(conn) == []
+    result = select_catalog(conn, "12345", "baseline", ["1", "1"])
+    assert result["added"] == 1
+    candidate = list_candidates(conn)[0]
+    assert candidate["source_types"] == {"baseline_catalog": 1}
+    assert select_catalog(conn, "12345", "baseline", ["1"])["existing"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM item_events").fetchone()[0] == before
+    conn.execute("INSERT INTO scans(id,seller_id,started_at,status,error_kind) VALUES ('failure','12345','t','failed','incomplete')")
+    conn.commit()
+    assert select_catalog(conn, "12345", "baseline", ["1"])["existing"] == 1
+    apply_scan_result(conn, "12345", items, scan_id="updated", catalog=SellerCatalog(items, 1, 1, "end_marker", True))
+    with pytest.raises(ValueError):
+        select_catalog(conn, "12345", "baseline", ["1"])
+    conn.close()
+
+
+def test_seed_only_or_old_scan_without_quality_evidence_cannot_be_selected(tmp_path):
+    conn = init_db(tmp_path / "untrusted.sqlite3")
+    add_seller(conn, "12345")
+    with pytest.raises(ValueError):
+        select_catalog(conn, "12345", "missing", ["1"])
+    apply_scan_result(conn, "12345", [SellerItem("1", "旧目录", "10", "")], scan_id="old")
+    with pytest.raises(ValueError):
+        select_catalog(conn, "12345", "old", ["1"])
+    assert list_candidates(conn) == []
     conn.close()

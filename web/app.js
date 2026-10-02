@@ -22,6 +22,17 @@ const runStatuses = { running: "进行中", ok: "成功", failed: "失败", susp
 const scanErrors = { incomplete: "分页不完整", count_drop: "商品数骤降，等待复扫" };
 const pageSize = 20;
 const viewState = { sellerId: null, sellerOffset: 0, eventsOffset: 0, candidatesOffset: 0 };
+let catalogSelectionScan = null;
+
+function updateCatalogSelection() {
+  const boxes = $$(".catalog-select:not(:disabled)");
+  const count = boxes.filter(box => box.checked).length;
+  $("#addCatalogCandidates").disabled = count === 0;
+  $("#addCatalogCandidates").textContent = `加入候选（${count}）`;
+  $("#catalogSelectAll").checked = boxes.length > 0 && count === boxes.length;
+  $("#catalogSelectAll").indeterminate = count > 0 && count < boxes.length;
+  $("#catalogSelectAll").disabled = boxes.length === 0;
+}
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -274,12 +285,14 @@ async function openSeller(sellerId, offset = 0, activate = true) {
     $("#sellerItemQuery").value = "";
     $("#sellerItemStatus").value = "";
     selectSellerView("catalog");
+    $("#catalogSelectionResult").textContent = "";
   }
   const query = new URLSearchParams({ limit: pageSize, offset, query: $("#sellerItemQuery").value, item_status: $("#sellerItemStatus").value });
   const data = await api(`/api/pool/${encodeURIComponent(sellerId)}?${query}`);
   viewState.sellerId = sellerId;
   viewState.sellerOffset = offset;
   const seller = data.seller;
+  catalogSelectionScan = data.selection_scan_id;
   $("#sellerTags").value = (seller.tags || []).join(", ");
   $("#sellerNotes").value = seller.notes || "";
   setResult("#sellerMetadataResult", "");
@@ -305,9 +318,20 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   }
   const itemsBody = $("#sellerItemsBody");
   itemsBody.replaceChildren();
-  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 7);
+  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 8);
   for (const item of data.items) {
     const row = document.createElement("tr");
+    const selectCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "catalog-select";
+    checkbox.value = item.item_id;
+    checkbox.disabled = !item.selectable;
+    checkbox.setAttribute("aria-label", `选择 ${item.title || item.item_id}`);
+    checkbox.title = item.selectable ? "加入研究候选" : "不在最近可信目录中，需完成扫描后复核";
+    checkbox.addEventListener("change", updateCatalogSelection);
+    selectCell.appendChild(checkbox);
+    row.appendChild(selectCell);
     const imageCell = document.createElement("td");
     const preview = document.createElement("div");
     preview.className = "catalog-image";
@@ -330,6 +354,7 @@ async function openSeller(sellerId, offset = 0, activate = true) {
     itemsBody.appendChild(row);
   }
   showPager("sellerItems", offset, data.total_items);
+  updateCatalogSelection();
   if (activate) activateTab("pool");
 }
 
@@ -440,7 +465,7 @@ async function refreshCandidates() {
     title.textContent = candidate.sample_title || candidate.normalized_title || "未命名商品";
     const meta = document.createElement("div");
     meta.className = "meta";
-    const qualityLabel = candidate.quality_flag === "legacy_unverified" ? "历史待核实" : "新扫描候选";
+    const qualityLabel = candidate.quality_flag === "legacy_unverified" ? "历史待核实" : "已记录候选";
     meta.textContent = `${qualityLabel} · 参考价格 ${candidate.sample_price || "—"} · 来源商家 ${candidate.seller_count} · 出现 ${candidate.appearance_count} 次 · 评分 ${Number(candidate.score || 0).toFixed(1)}`;
     const sources = document.createElement("div");
     sources.className = "meta";
@@ -476,6 +501,44 @@ async function refreshCandidates() {
     });
     actions.appendChild(status);
     card.append(title, meta, sources, dates, actions);
+    const evidence = document.createElement("details");
+    evidence.className = "candidate-evidence";
+    const summary = document.createElement("summary");
+    const types = candidate.source_types || {};
+    summary.textContent = `商品来源 · 存量 ${types.baseline_catalog || 0} · 上新 ${types.new_item || 0}`;
+    const sourceList = document.createElement("div");
+    evidence.append(summary, sourceList);
+    let offset = 0;
+    async function loadSources() {
+      const result = await api(`/api/candidates/${candidate.candidate_id}/sources?limit=20&offset=${offset}`);
+      if (!result.total) sourceList.textContent = "未保存逐商品来源，需人工核对历史记录。";
+      for (const source of result.sources) {
+        const row = document.createElement("div");
+        row.className = "source-row";
+        row.append(document.createTextNode(`${source.source_type === "baseline_catalog" ? "存量选品" : "监控上新"} · ${source.title} · ${source.price || "—"} · 商家 ${source.nickname || source.seller_id} · 观察于 ${formatTime(source.observed_at)} · `), safeLink(source.url));
+        sourceList.appendChild(row);
+      }
+      offset += result.sources.length;
+      if (offset < result.total) {
+        const more = document.createElement("button");
+        more.className = "ghost tiny";
+        more.type = "button";
+        more.textContent = "更多来源";
+        more.addEventListener("click", async () => {
+          more.disabled = true;
+          try { await loadSources(); more.remove(); } catch (error) { more.disabled = false; toast(error.message); }
+        });
+        sourceList.appendChild(more);
+      }
+    }
+    evidence.addEventListener("toggle", async () => {
+      if (!evidence.open || evidence.dataset.loaded) return;
+      evidence.dataset.loaded = "loading";
+      if (offset === 0) sourceList.replaceChildren();
+      try { await loadSources(); evidence.dataset.loaded = "yes"; }
+      catch (error) { delete evidence.dataset.loaded; sourceList.textContent = "来源读取失败，请重新展开重试"; toast(error.message); }
+    });
+    card.appendChild(evidence);
     list.appendChild(card);
   }
 }
@@ -626,6 +689,24 @@ $("#sellerMetadataForm").addEventListener("submit", (event) => {
 $("#sellerItemFilters").addEventListener("submit", (event) => {
   event.preventDefault();
   if (viewState.sellerId) openSeller(viewState.sellerId).catch(error => toast(error.message));
+});
+
+$("#catalogSelectAll").addEventListener("change", event => {
+  $$(".catalog-select:not(:disabled)").forEach(box => { box.checked = event.target.checked; });
+  updateCatalogSelection();
+});
+$("#addCatalogCandidates").addEventListener("click", () => {
+  const body = { seller_id: viewState.sellerId, scan_id: catalogSelectionScan, item_ids: $$(".catalog-select:checked").map(box => box.value) };
+  withBusy($("#addCatalogCandidates"), "保存中…", async () => {
+    try {
+      const result = await api("/api/candidates/from-catalog", { method: "POST", body: JSON.stringify(body) });
+      if (viewState.sellerId === body.seller_id) {
+        $("#catalogSelectionResult").textContent = `新增 ${result.added} 件来源，已存在 ${result.existing} 件`;
+        $$(".catalog-select").forEach(box => { box.checked = false; });
+      }
+      await Promise.all([refreshCandidates(), refreshStatus()]);
+    } catch (error) { if (viewState.sellerId === body.seller_id) $("#catalogSelectionResult").textContent = error.message; }
+  }).finally(updateCatalogSelection);
 });
 
 $("#btnScan").addEventListener("click", () => withBusy($("#btnScan"), "扫描中…", async () => {

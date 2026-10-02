@@ -6,7 +6,7 @@ import sqlite3
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from xianyu_radar.entrypoints.api.deps import get_db, parse_since
 from xianyu_radar.modules.candidates import service
@@ -16,6 +16,20 @@ router = APIRouter()
 
 class CandidateStatusBody(BaseModel):
     status: str
+
+
+class CatalogSelectionBody(BaseModel):
+    seller_id: str = Field(min_length=1, max_length=32)
+    scan_id: str = Field(min_length=1, max_length=100)
+    item_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+@router.post("/from-catalog")
+def select_catalog(body: CatalogSelectionBody, conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    try:
+        return service.select_catalog(conn, body.seller_id, body.scan_id, body.item_ids)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get("/{candidate_id}/sources")

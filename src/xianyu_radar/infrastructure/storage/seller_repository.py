@@ -219,15 +219,25 @@ def get_pool_seller_detail(
         "SELECT " + scan_columns + " FROM scans WHERE seller_id=? AND status='ok' ORDER BY rowid DESC LIMIT 1",
         (seller_id,),
     ).fetchone()
+    selection_scan_id = complete["id"] if complete and complete["finish_reason"] in {"end_marker", "short_page", "total_count"} else None
+    catalog_items = []
+    for row in items:
+        item = dict(row)
+        item["selectable"] = bool(selection_scan_id and conn.execute(
+            "SELECT 1 FROM item_snapshots WHERE scan_id=? AND seller_id=? AND item_id=? LIMIT 1",
+            (selection_scan_id, seller_id, item["item_id"]),
+        ).fetchone())
+        catalog_items.append(item)
     return {
         "seller": _seller_record(seller),
         "entries": [dict(row) for row in entries],
-        "items": [dict(row) for row in items],
+        "items": catalog_items,
         "total_items": total_items,
         "limit": limit,
         "offset": offset,
         "latest_scan": dict(latest) if latest else None,
         "latest_complete_scan": dict(complete) if complete else None,
+        "selection_scan_id": selection_scan_id,
     }
 
 

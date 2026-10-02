@@ -128,9 +128,14 @@
           </select>
           <button type="submit"><i data-lucide="search"></i>筛选</button>
         </form>
+        <div class="actions-row catalog-selection">
+          <label><input type="checkbox" id="catalogSelectAll" />选择本页</label>
+          <button type="button" id="addCatalogCandidates" disabled>加入候选（0）</button>
+          <span id="catalogSelectionResult" role="status"></span>
+        </div>
         <p class="hint">目录包含扫描商品与搜索种子，以完整扫描记录核对覆盖范围。</p>
         <div class="table-wrap"><table>
-          <thead><tr><th>主图</th><th>商品</th><th>价格</th><th>状态</th><th>来源</th><th>最近发现</th><th>链接</th></tr></thead>
+          <thead><tr><th>选择</th><th>主图</th><th>商品</th><th>价格</th><th>状态</th><th>来源</th><th>最近发现</th><th>链接</th></tr></thead>
           <tbody id="sellerItemsBody"></tbody>
         </table></div>
         <div class="pager"><button type="button" class="ghost tiny" id="sellerItemsPrev">上一页</button><span id="sellerItemsPage"></span><button type="button" class="ghost tiny" id="sellerItemsNext">下一页</button></div>
@@ -185,7 +190,7 @@
         </select>
         <select id="candQuality" aria-label="候选数据质量">
           <option value="all">全部数据</option>
-          <option value="normal">新扫描候选</option>
+          <option value="normal">正常候选</option>
           <option value="legacy_unverified">历史待核实</option>
         </select>
         <select id="candStatus" aria-label="候选审核状态">
