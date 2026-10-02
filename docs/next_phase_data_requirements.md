@@ -68,11 +68,31 @@
 | 检查项 | 结果 |
 | --- | --- |
 | SSH 网络连接 | `10.0.0.8:22` 可达，严格主机校验通过 |
-| 认证 | 默认 `root` 登录返回 `Permission denied (publickey,password)`，现有身份无法认证 |
-| 本地连接配置 | 未找到该地址的专用 SSH 配置；默认用户不代表实际业务账号 |
-| 应用、数据库和导出能力 | 未验证，未读取远端业务文件或数据库 |
-| 对生产系统的操作 | 仅连接尝试；未修改配置、启停服务、安装程序、执行发货或扫描端口 |
+| 认证 | 首次默认身份失败；用户确认 `root` 及密钥命名后，显式指定已有密钥登录成功 |
+| 部署 | `/opt/xianyu-helper/current` 指向 `releases/prod-20260929-r2`；应用容器与 PostgreSQL 容器健康检查均为 healthy |
+| 数据库 | PostgreSQL 17；已读取有限表名和商品、订单字段元信息 |
+| 查询保护 | `default_transaction_read_only=on`、`statement_timeout=3000`、`lock_timeout=1000` |
+| 对生产系统的操作 | 连接及有限结构读取；未修改文件、配置或业务数据，未启停服务、执行发货、安装程序或扫描端口 |
 
-错误含义：网络连接成功，但服务器不接受当前登录身份。继续探查需要实际 SSH 用户，以及已配置的连接别名或可用身份配置位置；不通过猜账号、借用其他服务器凭据或关闭主机校验解决。
+首次错误 `Permission denied (publickey,password)` 表示当前默认身份无法认证，已通过用户指定的身份配置解决，保留严格主机校验。
 
-可以先提供现有系统脱敏导出，仍能完成 T0 的字段映射。本文前述字段均为数据需求，不是该系统已确认具备的字段。
+### 已确认的业务表和字段
+
+数据库有独立商品表 `item_info` 和订单表 `orders`，另有 `cards`、`delivery_templates`、`order_reconciliations`、`order_refresh_jobs`。本次未读取实际业务记录或状态分布。
+
+| 表 | 已确认的相关字段 | 导入注意点 |
+| --- | --- | --- |
+| `item_info` | `cookie_id,item_id,item_title,item_description,item_category,item_price,item_detail,is_multi_spec,multi_quantity_delivery,created_at,updated_at,deleted_at` | `item_price` 是文本；是否在售不能只凭存在商品行或 `deleted_at` 判断。初次导出不需要描述和 `item_detail` |
+| `orders` | `order_id,item_id,cookie_id,spec_name,spec_value,quantity,amount,order_status,system_shipped,created_at,updated_at,paid_at,shipped_at,completed_at,deleted_at` | 数量、金额和付款/发货/完成时间为文本；`created_at/updated_at` 为无时区 timestamp，需确认业务时区 |
+
+商品关联建议以 `(cookie_id,item_id)` 为起点，`cookie_id` 作为不透明账号引用，可一致脱敏；它不是需要导出的 Cookie 凭据。商品身份与订单唯一约束仍需正式导入前核对，不能只看字段名假定主键。软删除记录和多规格商品必须有明确处理规则。
+
+`amount` 是否实付、`paid_at` 是否完整、订单状态是否同步到退款最终结果，都未通过记录核对。`system_shipped` 也不能单独证明付款成功。表中存在买家和收货信息相关字段，导出白名单应排除它们。
+
+### 推荐第一份数据包
+
+1. 商品：`cookie_id,item_id,item_title,item_category,item_price,is_multi_spec,created_at,updated_at,deleted_at`，先给 10–20 条样本，再确认全量范围。
+2. 订单：`order_id,cookie_id,item_id,spec_name,spec_value,quantity,amount,order_status,system_shipped,created_at,updated_at,paid_at,shipped_at,completed_at,deleted_at`，先给少量不同状态样本，不直接拉全库。
+3. 原始状态含义、金额单位、业务时区，以及测试单、补发、退款如何识别的说明。
+
+以上是实际字段白名单，不要求生产系统新增字段。没有读取商品或订单正文，故仍需脱敏样本验证内容格式。应用容器内为编译后二进制，本次未取得源代码中的状态映射；已有后台 CSV/API 导出入口也未验证，不能声称已有可直接使用的接口。优先请用户通过已有后台提供样本；若无导出能力，再制定限定字段和范围的只读提取方案。本次探查不代表已授权新增导出程序或持续查询生产数据。
