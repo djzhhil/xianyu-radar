@@ -1,0 +1,1 @@
+ALTER TABLE discovery_runs ADD COLUMN unparsed_count INTEGER NOT NULL DEFAULT 0;

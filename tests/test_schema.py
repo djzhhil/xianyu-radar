@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sqlite3
+import pytest
 
 from xianyu_radar.config import SCHEMA_VERSION
 from xianyu_radar.infrastructure.storage.db import get_schema_version, init_db, table_names
@@ -103,4 +104,24 @@ def test_v3_runs_migrate_without_losing_history(tmp_path: Path) -> None:
                        "FROM discovery_runs WHERE id='old'").fetchone()
     assert tuple(run) == (2, 1, "ok", 0)
     assert {"discovery_pages", "discovery_items", "discovery_entries", "scan_pages"} <= table_names(conn)
+    conn.close()
+
+
+@pytest.mark.parametrize("missing_column", [True, False])
+def test_v8_discovery_compat_preserves_existing_runs_and_counts(tmp_path, missing_column):
+    db_path = tmp_path / "v8.sqlite3"
+    conn = init_db(db_path)
+    conn.execute("INSERT INTO discovery_runs(id,keyword,started_at,status,item_count,unparsed_count) VALUES ('old','FDE','t','ok',3,7)")
+    if missing_column:
+        conn.execute("ALTER TABLE discovery_runs DROP COLUMN unparsed_count")
+    conn.execute("UPDATE meta SET value='8' WHERE key='schema_version'")
+    conn.commit()
+    conn.close()
+    conn = init_db(db_path)
+    assert tuple(conn.execute("SELECT keyword,status,item_count,unparsed_count FROM discovery_runs WHERE id='old'").fetchone()) == ("FDE", "ok", 3, 0 if missing_column else 7)
+    assert get_schema_version(conn) == SCHEMA_VERSION
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    conn.close()
+    conn = init_db(db_path)
+    assert conn.execute("SELECT COUNT(*) FROM discovery_runs").fetchone()[0] == 1
     conn.close()

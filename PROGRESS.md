@@ -1,5 +1,13 @@
 # Progress log (Phase 4)
 
+## 本地联调修复 — 发现记录缺失字段（2026-10-02）
+
+- 分支：`codex/fix-discovery-count-migration`。
+- 本地旧库标记 v8，但 `discovery_runs` 缺少 `unparsed_count`，导致发现记录 API 和页面刷新失败；新增 v9 兼容迁移，仅在字段缺失时补列，已有字段和计数不变，不重建或删除历史记录。
+- 缺失列的历史计数无法还原，使用既有字段默认值 0；不据此推断历史解析质量。
+- 升级前备份：`data/backups/pre-discovery-repair-a5264d4a.sqlite3`；迁移测试覆盖缺列、字段已存在、计数保留与重复初始化。
+- 验证：89 项自动测试及隔离浏览器回归通过；本地升级后完整性检查通过，8 条发现历史及原有候选审核/质量状态与备份一致。
+
 ## T2.3 — 独立排除规则与扫描判断（2026-10-02）
 
 - 分支：`codex/t2-candidate-exclusions`。

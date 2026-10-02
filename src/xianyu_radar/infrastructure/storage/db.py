@@ -56,6 +56,9 @@ def init_db(db_path: Path | None = None, *, check_same_thread: bool = True) -> s
             conn.close()
             raise RuntimeError(f"Expected one migration for schema version {version}")
         migration = files[0].read_text(encoding="utf-8")
+        # Early v4 databases omitted this column; current v4 installs already have it.
+        if version == 9 and any(row["name"] == "unparsed_count" for row in conn.execute("PRAGMA table_info(discovery_runs)")):
+            migration = ""
         try:
             conn.executescript(
                 "BEGIN IMMEDIATE;\n"
