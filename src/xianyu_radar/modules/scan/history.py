@@ -39,7 +39,7 @@ def write_snapshots(
 ) -> None:
     now = _now()
     conn.executemany(
-        "INSERT INTO item_snapshots(item_id, seller_id, title, price, captured_at, scan_id) "
-        "VALUES (?,?,?,?,?,?)",
-        [(i.item_id, seller_id, i.title, i.price, now, scan_id) for i in items],
+        "INSERT INTO item_snapshots(item_id, seller_id, title, price, captured_at, scan_id, image) "
+        "VALUES (?,?,?,?,?,?,?)",
+        [(i.item_id, seller_id, i.title, i.price, now, scan_id, i.image) for i in items],
     )

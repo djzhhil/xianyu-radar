@@ -60,13 +60,14 @@ def upsert_seller_item(
     if existing:
         check = int(existing["check_count"] or 0) + (1 if bump_check else 0)
         conn.execute(
-            "UPDATE items SET seller_id=?, title=?, price=?, url=?, status='active', "
+            "UPDATE items SET seller_id=?, title=?, price=?, url=?, image=?, status='active', "
             "last_seen_at=?, last_price=?, last_title=?, check_count=?, missing_count=0 WHERE item_id=?",
             (
                 seller_id,
                 item.title,
                 item.price,
                 item.url,
+                item.image,
                 now,
                 item.price,
                 item.title,
@@ -76,15 +77,16 @@ def upsert_seller_item(
         )
     else:
         conn.execute(
-            "INSERT INTO items(item_id, seller_id, title, price, url, status, first_seen_at, "
+            "INSERT INTO items(item_id, seller_id, title, price, url, image, status, first_seen_at, "
             "last_seen_at, last_price, last_title, check_count, source) "
-            "VALUES (?,?,?,?,?,'active',?,?,?,?,?, 'seller_scan')",
+            "VALUES (?,?,?,?,?,?,'active',?,?,?,?,?, 'seller_scan')",
             (
                 item.item_id,
                 seller_id,
                 item.title,
                 item.price,
                 item.url,
+                item.image,
                 now,
                 now,
                 item.price,

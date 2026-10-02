@@ -277,9 +277,26 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   }
   const itemsBody = $("#sellerItemsBody");
   itemsBody.replaceChildren();
-  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 6);
+  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 7);
   for (const item of data.items) {
     const row = document.createElement("tr");
+    const imageCell = document.createElement("td");
+    const preview = document.createElement("div");
+    preview.className = "catalog-image";
+    preview.textContent = "暂无图片";
+    try {
+      const url = new URL(item.image);
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("unsupported image URL");
+      const image = document.createElement("img");
+      image.src = url.href;
+      image.alt = item.title || item.item_id;
+      image.loading = "lazy";
+      image.referrerPolicy = "no-referrer";
+      image.addEventListener("error", () => { preview.textContent = "图片失效"; });
+      preview.replaceChildren(image);
+    } catch { /* Missing or unsupported image URLs retain the placeholder. */ }
+    imageCell.appendChild(preview);
+    row.appendChild(imageCell);
     [item.title || item.item_id, item.price, itemStatuses[item.status] || item.status, itemSources[item.source] || item.source, item.last_seen_at].forEach((value) => addCell(row, value));
     addLinkCell(row, item.url);
     itemsBody.appendChild(row);

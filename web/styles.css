@@ -19,6 +19,11 @@
 #sellerMetadataForm { display: grid; gap: 0.5rem; margin: 1rem 0; }
 #sellerMetadataForm input, #sellerMetadataForm textarea { width: 100%; min-width: 0; }
 #sellerMetadataForm button { justify-self: start; }
+.catalog-image { width: 64px; height: 64px; display: grid; place-items: center; font-size: 11px; border: 1px solid var(--line); }
+.catalog-image img { width: 100%; height: 100%; object-fit: contain; }
+#sellerDetail .table-wrap:has(#sellerItemsBody) table { min-width: 680px; }
+#tab-pool { min-width: 0; }
+#poolBody .text-button { white-space: nowrap; }
 
 html, body {
   margin: 0;

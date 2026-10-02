@@ -204,7 +204,7 @@ def get_pool_seller_detail(
     where = " AND ".join(conditions)
     total_items = conn.execute("SELECT COUNT(*) FROM items WHERE " + where, params).fetchone()[0]
     items = conn.execute(
-        "SELECT item_id, title, price, url, category, status, first_seen_at, "
+        "SELECT item_id, title, price, url, image, category, status, first_seen_at, "
         "last_seen_at, check_count, source FROM items WHERE " + where + " "
         "ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, "
         "last_seen_at DESC, item_id DESC LIMIT ? OFFSET ?",

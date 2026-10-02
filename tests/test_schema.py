@@ -52,6 +52,8 @@ def test_v1_database_migrates_without_losing_rows(tmp_path: Path) -> None:
         old.execute(
             "INSERT INTO sellers(seller_id, first_seen_at, last_seen_at) VALUES ('s1', 't', 't')"
         )
+        old.execute("INSERT INTO items(item_id,seller_id,first_seen_at,last_seen_at) VALUES ('i1','s1','t','t')")
+        old.execute("INSERT INTO item_snapshots(item_id,seller_id,captured_at,scan_id) VALUES ('i1','s1','t','old')")
 
     conn = init_db(db_path)
     assert get_schema_version(conn) == SCHEMA_VERSION
@@ -59,6 +61,8 @@ def test_v1_database_migrates_without_losing_rows(tmp_path: Path) -> None:
     assert "missing_count" in {row["name"] for row in conn.execute("PRAGMA table_info(items)")}
     assert "expected_count" in {row["name"] for row in conn.execute("PRAGMA table_info(scans)")}
     assert tuple(conn.execute("SELECT notes,tags FROM sellers WHERE seller_id='s1'").fetchone()) == ("", "[]")
+    assert conn.execute("SELECT image FROM items WHERE item_id='i1'").fetchone()[0] == ""
+    assert conn.execute("SELECT image FROM item_snapshots WHERE scan_id='old'").fetchone()[0] == ""
     conn.close()
 
 

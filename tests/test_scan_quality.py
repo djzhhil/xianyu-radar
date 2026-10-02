@@ -74,6 +74,25 @@ def test_same_seller_scan_lock_is_exclusive() -> None:
             assert different_seller
 
 
+def test_images_persist_in_current_catalog_and_snapshot_but_not_failed_scan(tmp_path: Path, monkeypatch) -> None:
+    conn = init_db(tmp_path / "images.sqlite3")
+    item = SellerItem("1", "FDE", "10", "https://www.goofish.com/item?id=1", image="https://example.test/old.png")
+    apply_scan_result(conn, "seller", [item], scan_id="first")
+    item.image = "https://example.test/new.png"
+    apply_scan_result(conn, "seller", [item], scan_id="second")
+    assert conn.execute("SELECT image FROM items WHERE item_id='1'").fetchone()[0] == item.image
+    assert [row[0] for row in conn.execute("SELECT image FROM item_snapshots ORDER BY id")] == [
+        "https://example.test/old.png", "https://example.test/new.png"
+    ]
+    item.image = "https://example.test/untrusted.png"
+    monkeypatch.setattr("xianyu_radar.modules.scan.service.get_seller_items",
+        lambda *_, **kwargs: SellerCatalog([item], 2, 1, "page_limit", False))
+    scan_seller(conn, Session("cookie", "token", "test"), "seller")
+    assert conn.execute("SELECT image FROM items WHERE item_id='1'").fetchone()[0] == "https://example.test/new.png"
+    assert conn.execute("SELECT COUNT(*) FROM item_snapshots").fetchone()[0] == 2
+    conn.close()
+
+
 def test_verified_empty_shop_requires_two_complete_observations(tmp_path: Path, monkeypatch) -> None:
     conn = init_db(tmp_path / "empty.sqlite3")
     apply_scan_result(conn, "seller", _items(25))
