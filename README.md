@@ -28,6 +28,8 @@ pytest -q
 
 ## Web UI（前后端联调）
 
+前端工作台布局、图标构建和可重复浏览器验收见 [`docs/frontend_workbench.md`](docs/frontend_workbench.md)。
+
 ```bash
 radar serve --host 127.0.0.1 --port 8765
 # 打开 http://127.0.0.1:8765

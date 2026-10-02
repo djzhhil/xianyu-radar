@@ -3,45 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>xianyu-radar</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/styles.css?v=20261002-pool-catalog" />
+  <title>商家池 · 闲鱼补货工作台</title>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261002-workbench" />
 </head>
 <body>
-  <div class="atmosphere" aria-hidden="true"></div>
-  <header class="top">
-    <div class="brand-block">
-      <p class="brand">xianyu-radar</p>
-      <p class="tagline">登录 → 发现商家 → 管理商家池 → 扫描商品 → 查看候选</p>
-    </div>
-    <div class="top-right">
-      <button type="button" class="auth-pill" id="authPill">检查登录态…</button>
-    </div>
-  </header>
-
-  <main>
-    <section class="panel hero-stats" id="stats" aria-label="当前数据">
-      <div class="stat"><span class="n" id="sSellers">—</span><span class="l">监控商家</span></div>
-      <div class="stat"><span class="n" id="sItems">—</span><span class="l">商品记录</span></div>
-      <div class="stat"><span class="n" id="sCands">—</span><span class="l">候选商品</span></div>
-    </section>
-
-    <nav class="tabs" aria-label="五条业务链路">
-      <button type="button" class="tab active" data-tab="auth">1 登录态</button>
-      <button type="button" class="tab" data-tab="discover">2 发现商家</button>
-      <button type="button" class="tab" data-tab="pool">3 商家池</button>
-      <button type="button" class="tab" data-tab="scan">4 扫描商家</button>
-      <button type="button" class="tab" data-tab="candidates">5 候选商品</button>
+  <aside class="sidebar">
+    <div class="brand-block"><span class="brand-mark">R</span><div><p class="brand">闲鱼补货</p><span class="brand-sub">xianyu-radar</span></div></div>
+    <nav class="tabs" aria-label="工作台导航">
+      <button type="button" class="tab active" data-tab="pool" aria-current="page"><i data-lucide="users"></i>商家池</button>
+      <button type="button" class="tab" data-tab="candidates"><i data-lucide="list-checks"></i>候选商品</button>
+      <button type="button" class="tab" data-tab="scan"><i data-lucide="scan-line"></i>扫描与变化</button>
+      <button type="button" class="tab" data-tab="discover"><i data-lucide="search"></i>发现商家</button>
+      <button type="button" class="tab settings-tab" data-tab="auth"><i data-lucide="settings"></i>登录设置</button>
     </nav>
+    <div class="sidebar-foot"><span class="status-dot"></span>按需手动扫描</div>
+  </aside>
+  <div class="workspace">
+    <header class="top">
+      <div><p class="eyebrow">补货工作台</p><h1 id="pageTitle">商家池</h1></div>
+      <div class="top-right">
+        <button type="button" class="ghost icon-button" id="btnRefresh" aria-label="刷新数据" title="刷新数据"><i data-lucide="refresh-cw"></i></button>
+        <button type="button" class="auth-pill" id="authPill">检查登录态…</button>
+      </div>
+    </header>
+    <section class="global-stats" id="stats" aria-label="当前数据">
+      <div class="stat"><span class="l">监控商家</span><span class="n" id="sSellers">—</span></div>
+      <div class="stat"><span class="l">商品记录</span><span class="n" id="sItems">—</span></div>
+      <div class="stat"><span class="l">候选商品</span><span class="n" id="sCands">—</span></div>
+    </section>
+  <main>
 
-    <section class="panel tab-panel active" id="tab-auth">
+    <section class="panel tab-panel" id="tab-auth">
       <h2>登录态</h2>
-      <p class="hint">粘贴浏览器 Cookie 或会话 JSON，保存到 <code>data/state/default.json</code>。Cookie 需要包含 <code>_m_h5_tk</code>。</p>
+      <p class="hint">Cookie 需包含 <code>_m_h5_tk</code>。</p>
       <textarea id="cookieInput" rows="5" spellcheck="false" aria-label="Cookie 或会话 JSON" placeholder="_m_h5_tk=...; _m_h5_tk_enc=...; cookie2=..."></textarea>
       <div class="actions-row">
-        <button type="button" id="btnSaveCookie">保存登录态</button>
+        <button type="button" id="btnSaveCookie"><i data-lucide="save"></i>保存登录态</button>
       </div>
       <p class="result-message" id="authResult" role="status"></p>
       <details class="response-details">
@@ -52,15 +49,14 @@
 
     <section class="panel tab-panel" id="tab-discover">
       <h2>发现商家</h2>
-      <p class="hint">输入关键词，搜索商品并把识别出的卖家加入商家池。这里不会扫描商家的全部商品。</p>
       <form id="discoverForm" class="row-form">
         <input name="keyword" type="text" placeholder="输入商品关键词" required />
         <label>最多页数 <input name="max_pages" type="number" min="1" max="50" value="3" /></label>
-        <button type="submit">开始发现</button>
+        <button type="submit"><i data-lucide="search"></i>开始发现</button>
       </form>
       <p class="result-message" id="discoverResult" role="status"></p>
       <h3>本次搜索商品</h3>
-      <p class="hint">点击商家可查看已存商品。这里最多展示前 50 条搜索商品，不代表商家的完整商品目录。</p>
+      <p class="hint">搜索结果最多展示 50 条。</p>
       <div class="table-wrap"><table>
         <thead><tr><th>商品</th><th>价格</th><th>商家</th><th>商品链接</th></tr></thead>
         <tbody id="discoverBody"><tr><td colspan="4">开始发现后在这里查看结果</td></tr></tbody>
@@ -76,15 +72,15 @@
       </details>
     </section>
 
-    <section class="panel tab-panel" id="tab-pool">
-      <h2>商家池</h2>
+    <section class="panel tab-panel active" id="tab-pool">
+      <div id="sellerRoster">
+      <h2>监控商家</h2>
       <form id="addSellerForm" class="row-form">
         <input type="text" name="reference" aria-label="商家 ID 或主页链接" placeholder="商家 ID 或闲鱼主页链接" required maxlength="2048" />
         <input type="text" name="nickname" aria-label="商家昵称" placeholder="昵称（可选）" maxlength="100" />
-        <button type="submit">添加商家</button>
+        <button type="submit"><i data-lucide="plus"></i>添加商家</button>
       </form>
       <p class="result-message" id="addSellerResult" role="status"></p>
-      <p class="hint">查看发现的商家。状态决定商家池扫描时是否包含该商家。</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -93,23 +89,34 @@
           <tbody id="poolBody"></tbody>
         </table>
       </div>
+      </div>
       <section class="detail" id="sellerDetail" hidden>
-        <div class="panel-head"><h3 id="sellerDetailTitle">商家详情</h3><button type="button" class="ghost tiny" id="closeSellerDetail">关闭</button></div>
+        <button type="button" class="ghost back-button" id="closeSellerDetail"><i data-lucide="chevron-left"></i>商家列表</button>
+        <div class="panel-head"><h2 id="sellerDetailTitle">商家详情</h2></div>
         <p class="hint" id="sellerDetailMeta"></p>
+        <nav class="detail-tabs" aria-label="商家详情视图">
+          <button type="button" class="active" data-seller-view="catalog" aria-current="page">商品目录</button>
+          <button type="button" data-seller-view="metadata">备注与标签</button>
+          <button type="button" data-seller-view="sources">入池来源</button>
+        </nav>
+        <div class="seller-pane" id="seller-pane-metadata" hidden>
         <form id="sellerMetadataForm">
           <label for="sellerTags">标签</label>
           <input type="text" id="sellerTags" placeholder="FDE, 重点参考" maxlength="1000" />
           <label for="sellerNotes">备注</label>
           <textarea id="sellerNotes" rows="3" maxlength="2000"></textarea>
-          <button type="submit">保存备注与标签</button>
+          <button type="submit"><i data-lucide="save"></i>保存备注与标签</button>
           <p class="result-message" id="sellerMetadataResult" role="status"></p>
         </form>
+        </div>
+        <div class="seller-pane" id="seller-pane-sources" hidden>
         <h4>入池来源</h4>
         <div class="table-wrap"><table>
           <thead><tr><th>关键词</th><th>来源商品 ID</th><th>原因</th><th>加入时间</th></tr></thead>
           <tbody id="sellerEntriesBody"></tbody>
         </table></div>
-        <h4>已存商品</h4>
+        </div>
+        <div class="seller-pane" id="seller-pane-catalog">
         <p id="sellerCatalogQuality" role="status"></p>
         <form id="sellerItemFilters" class="row-form">
           <input type="text" id="sellerItemQuery" aria-label="商品标题" placeholder="搜索商品标题" maxlength="200" />
@@ -119,25 +126,25 @@
             <option value="removed">已下架</option>
             <option value="unknown">未知</option>
           </select>
-          <button type="submit">筛选</button>
+          <button type="submit"><i data-lucide="search"></i>筛选</button>
         </form>
-        <p class="hint">这里包含关键词搜索留下的商品和商家扫描保存的商品；仅发现而未扫描的商家通常没有完整列表。</p>
+        <p class="hint">目录包含扫描商品与搜索种子，以完整扫描记录核对覆盖范围。</p>
         <div class="table-wrap"><table>
           <thead><tr><th>主图</th><th>商品</th><th>价格</th><th>状态</th><th>来源</th><th>最近发现</th><th>链接</th></tr></thead>
           <tbody id="sellerItemsBody"></tbody>
         </table></div>
         <div class="pager"><button type="button" class="ghost tiny" id="sellerItemsPrev">上一页</button><span id="sellerItemsPage"></span><button type="button" class="ghost tiny" id="sellerItemsNext">下一页</button></div>
+        </div>
       </section>
     </section>
 
     <section class="panel tab-panel" id="tab-scan">
       <h2>扫描商家</h2>
-      <p class="hint">从商家池读取商品列表，记录变化并生成候选。选择“全部监控商家”或一个商家后再开始。</p>
       <div class="row-form">
         <select id="scanTarget" aria-label="扫描范围">
           <option value="">全部监控商家</option>
         </select>
-        <button type="button" id="btnScan">开始扫描</button>
+        <button type="button" id="btnScan"><i data-lucide="scan-line"></i>开始扫描</button>
       </div>
       <p class="result-message" id="scanResult" role="status"></p>
       <details class="response-details">
@@ -170,9 +177,9 @@
 
     <section class="panel tab-panel" id="tab-candidates">
       <div class="panel-head">
-        <h2>候选商品</h2>
+        <h2>候选列表</h2>
         <select id="candSince" aria-label="候选时间范围">
-          <option value="">全部</option>
+          <option value="">全部时间</option>
           <option value="24h">过去 24 小时</option>
           <option value="7d">过去 7 天</option>
         </select>
@@ -190,7 +197,7 @@
           <option value="rejected">已排除</option>
         </select>
       </div>
-      <p class="hint">扫描发现的新商品会出现在这里。历史待核实数据来自修复前的扫描，请复核后再用于选品。概览按时间和数据质量统计，不受状态筛选影响。</p>
+      <p class="hint">历史待核实商品需复核。概览统计当前时间与质量范围，包含全部审核状态。</p>
       <div class="hero-stats candidate-summary" aria-label="候选概览">
         <div class="stat"><span class="n" id="candTotal">0</span><span class="l">范围内候选</span></div>
         <div class="stat"><span class="n" id="candNew">0</span><span class="l">待复核</span></div>
@@ -203,11 +210,12 @@
   </main>
 
   <footer>
-    <span>每一步对应一条后端业务链路</span>
-    <a href="/docs" target="_blank" rel="noreferrer">API 文档</a>
+    <span>FDE · 选品与补货</span>
   </footer>
+  </div>
 
   <div class="toast" id="toast" hidden></div>
-  <script src="/assets/app.js?v=20261002-pool-catalog"></script>
+  <script src="/assets/icons.js?v=20261002-workbench"></script>
+  <script src="/assets/app.js?v=20261002-workbench"></script>
 </body>
 </html>

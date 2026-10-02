@@ -61,18 +61,23 @@ function setLog(selector, value) {
 }
 
 async function withBusy(button, busyText, action) {
-  const label = button.textContent;
+  const content = [...button.childNodes];
   button.disabled = true;
   button.textContent = busyText;
   try {
     await action();
   } finally {
     button.disabled = false;
-    button.textContent = label;
+    button.replaceChildren(...content);
   }
 }
 
 function activateTab(name) {
+  const names = { pool: "商家池", candidates: "候选商品", scan: "扫描与变化", discover: "发现商家", auth: "登录设置" };
+  if (!Object.hasOwn(names, name)) return;
+  $("#pageTitle").textContent = names[name];
+  document.title = `${names[name]} · 闲鱼补货工作台`;
+  history.replaceState(null, "", `#${name}`);
   $$(".tab").forEach((button) => {
     const active = button.dataset.tab === name;
     button.classList.toggle("active", active);
@@ -81,6 +86,27 @@ function activateTab(name) {
   $$(".tab-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
+}
+
+window.addEventListener("hashchange", () => activateTab(location.hash.slice(1)));
+
+function formatTime(value) {
+  if (!value) return "暂无";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(date);
+}
+
+function selectSellerView(name) {
+  $$("[data-seller-view]").forEach(button => {
+    const active = button.dataset.sellerView === name;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  $$(".seller-pane").forEach(pane => { pane.hidden = pane.id !== `seller-pane-${name}`; });
 }
 
 async function refreshStatus() {
@@ -210,7 +236,7 @@ async function refreshDiscoveryRuns() {
     const row = document.createElement("tr");
     const counts = `${run.page_count} / ${run.raw_result_count} / ${run.unique_item_count || run.item_count}`;
     const state = `${runStatuses[run.status] || run.status}${run.error_kind ? ` · ${run.error_kind}` : ""}${run.unresolved_count ? ` · 未识别 ${run.unresolved_count}` : ""}${run.unparsed_count ? ` · 未解析 ${run.unparsed_count}` : ""}`;
-    [run.started_at, run.keyword, counts, run.unique_seller_count, run.seller_count, state].forEach((value) => addCell(row, value));
+    [formatTime(run.started_at), run.keyword, counts, run.unique_seller_count, run.seller_count, state].forEach((value) => addCell(row, value));
     const actions = document.createElement("td");
     const detail = document.createElement("button");
     detail.type = "button";
@@ -247,6 +273,7 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   if (viewState.sellerId !== sellerId) {
     $("#sellerItemQuery").value = "";
     $("#sellerItemStatus").value = "";
+    selectSellerView("catalog");
   }
   const query = new URLSearchParams({ limit: pageSize, offset, query: $("#sellerItemQuery").value, item_status: $("#sellerItemStatus").value });
   const data = await api(`/api/pool/${encodeURIComponent(sellerId)}?${query}`);
@@ -257,22 +284,23 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   $("#sellerNotes").value = seller.notes || "";
   setResult("#sellerMetadataResult", "");
   $("#sellerDetail").hidden = false;
-  $("#sellerDetailTitle").textContent = `${seller.nickname || seller.seller_id} · ${seller.seller_id}`;
-  $("#sellerDetailMeta").textContent = `状态：${poolStatuses[seller.status] || seller.status} · 最近扫描：${seller.last_scan_at || "暂无"} · 连续失败：${seller.consecutive_failures || 0} · 已存商品：${data.total_items}`;
+  $("#sellerRoster").hidden = true;
+  $("#sellerDetailTitle").textContent = seller.nickname ? `${seller.nickname} · ${seller.seller_id}` : `商家 ${seller.seller_id}`;
+  $("#sellerDetailMeta").textContent = `${poolStatuses[seller.status] || seller.status} · 最近成功扫描：${formatTime(seller.last_scan_at)} · 连续失败 ${seller.consecutive_failures || 0} 次`;
   const complete = data.latest_complete_scan;
   const latest = data.latest_scan;
   $("#sellerCatalogQuality").textContent = complete
-    ? `最近完整扫描：${complete.finished_at || complete.started_at} · ${complete.item_count} 件 · 当前筛选 ${data.total_items} 件`
+    ? `最近完整扫描：${formatTime(complete.finished_at || complete.started_at)} · ${complete.item_count} 件 · 当前筛选 ${data.total_items} 件`
     : "尚无完整扫描记录";
   if (latest && latest.status !== "ok") {
-    $("#sellerCatalogQuality").textContent += `；最近扫描：${scanErrors[latest.error_kind] || runStatuses[latest.status] || latest.status} · ${latest.finished_at || latest.started_at}`;
+    $("#sellerCatalogQuality").textContent += `；最近扫描：${scanErrors[latest.error_kind] || runStatuses[latest.status] || latest.status} · ${formatTime(latest.finished_at || latest.started_at)}`;
   }
   const entriesBody = $("#sellerEntriesBody");
   entriesBody.replaceChildren();
   if (!data.entries.length) addEmptyRow(entriesBody, "暂无入池记录", 4);
   for (const entry of data.entries) {
     const row = document.createElement("tr");
-    [entry.source_keyword, entry.source_item_id, entry.reason === "manual" ? "手动添加" : entry.reason, entry.joined_at].forEach((value) => addCell(row, value));
+    [entry.source_keyword, entry.source_item_id, entry.reason === "manual" ? "手动添加" : entry.reason, formatTime(entry.joined_at)].forEach((value) => addCell(row, value));
     entriesBody.appendChild(row);
   }
   const itemsBody = $("#sellerItemsBody");
@@ -297,7 +325,7 @@ async function openSeller(sellerId, offset = 0, activate = true) {
     } catch { /* Missing or unsupported image URLs retain the placeholder. */ }
     imageCell.appendChild(preview);
     row.appendChild(imageCell);
-    [item.title || item.item_id, item.price, itemStatuses[item.status] || item.status, itemSources[item.source] || item.source, item.last_seen_at].forEach((value) => addCell(row, value));
+    [item.title || item.item_id, item.price, itemStatuses[item.status] || item.status, itemSources[item.source] || item.source, formatTime(item.last_seen_at)].forEach((value) => addCell(row, value));
     addLinkCell(row, item.url);
     itemsBody.appendChild(row);
   }
@@ -337,7 +365,7 @@ async function refreshPool() {
     row.appendChild(sellerCell);
     addCell(row, [seller.nickname || "—", ...(seller.tags || [])].join(" · "));
     addCell(row, seller.keywords || "—");
-    addCell(row, seller.last_scan_at);
+    addCell(row, formatTime(seller.last_scan_at));
 
     const statusCell = document.createElement("td");
     const select = document.createElement("select");
@@ -375,6 +403,7 @@ async function refreshPool() {
   if (viewState.sellerId && !data.sellers.some((seller) => seller.seller_id === viewState.sellerId)) {
     viewState.sellerId = null;
     $("#sellerDetail").hidden = true;
+    $("#sellerRoster").hidden = false;
   }
 }
 
@@ -418,7 +447,7 @@ async function refreshCandidates() {
     sources.textContent = `商家：${(candidate.source_sellers || []).join("、") || "—"}`;
     const dates = document.createElement("div");
     dates.className = "meta";
-    dates.textContent = `首次发现 ${candidate.first_seen_at || "—"} · 最近发现 ${candidate.last_seen_at || "—"}`;
+    dates.textContent = `首次发现 ${formatTime(candidate.first_seen_at)} · 最近发现 ${formatTime(candidate.last_seen_at)}`;
     const actions = document.createElement("div");
     actions.className = "cand-actions";
     actions.appendChild(safeLink(candidate.sample_url));
@@ -460,7 +489,7 @@ async function refreshScanRuns() {
     const row = document.createElement("tr");
     const diagnosis = scanErrors[run.error_kind] || run.error_kind || runStatuses[run.status] || run.status;
     const detail = run.page_count ? `${diagnosis} · ${run.page_count} 页 · 预期 ${run.expected_count ?? "未知"} · ${run.finish_reason || "—"}` : diagnosis;
-    [run.started_at, run.seller_id, run.item_count, run.event_count, detail].forEach((value) => addCell(row, value));
+    [formatTime(run.started_at), run.seller_id, run.item_count, run.event_count, detail].forEach((value) => addCell(row, value));
     body.appendChild(row);
   }
 }
@@ -476,7 +505,7 @@ async function refreshEvents() {
   }
   for (const event of data.events) {
     const row = document.createElement("tr");
-    addCell(row, event.detected_at);
+    addCell(row, formatTime(event.detected_at));
     addCell(row, eventTypes[event.event_type] || event.event_type);
     addCell(row, event.seller_id, true);
     addCell(row, event.item_id, true);
@@ -498,6 +527,16 @@ async function refreshAll() {
 $$(".tab").forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));
 });
+$$("[data-seller-view]").forEach(button => {
+  button.addEventListener("click", () => selectSellerView(button.dataset.sellerView));
+});
+$("#btnRefresh").addEventListener("click", () => withBusy($("#btnRefresh"), "…", async () => {
+  try {
+    await refreshAll();
+    if (viewState.sellerId) await openSeller(viewState.sellerId, viewState.sellerOffset, false);
+    toast("数据已刷新");
+  } catch (error) { toast(error.message); }
+}));
 $("#authPill").addEventListener("click", () => {
   activateTab("auth");
   $("#cookieInput").focus();
@@ -617,6 +656,7 @@ $("#btnScan").addEventListener("click", () => withBusy($("#btnScan"), "扫描中
 $("#closeSellerDetail").addEventListener("click", () => {
   viewState.sellerId = null;
   $("#sellerDetail").hidden = true;
+  $("#sellerRoster").hidden = false;
 });
 for (const [id, delta] of [["sellerItemsPrev", -1], ["sellerItemsNext", 1]]) {
   $(`#${id}`).addEventListener("click", () => openSeller(viewState.sellerId, viewState.sellerOffset + delta * pageSize).catch((error) => toast(error.message)));
@@ -653,5 +693,5 @@ $("#evtSince").addEventListener("change", () => {
 });
 
 refreshAll()
-  .then((status) => { if (status.auth.ok) activateTab("discover"); })
+  .then(() => activateTab(location.hash.slice(1) || "pool"))
   .catch((error) => toast(error.message));
