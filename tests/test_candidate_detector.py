@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xianyu_radar.modules.scan.candidate_detector import is_target_product, process_new_item_events
+from xianyu_radar.infrastructure.storage.candidate_repository import match_exclusions
 from xianyu_radar.modules.candidates.service import list_candidates
 from xianyu_radar.modules.scan.diff import diff_items
 from xianyu_radar.models import SeedItem, SellerItem
@@ -13,12 +13,12 @@ from xianyu_radar.infrastructure.storage.db import init_db
 from xianyu_radar.infrastructure.storage.seller_repository import upsert_seed_item
 
 
-def test_is_target_product() -> None:
-    assert is_target_product("全新Sony A7M4资料", ["Sony A7M4"])
-    assert not is_target_product("Nikon Z8 教程", ["Sony A7M4"])
+def test_explicit_patterns_match() -> None:
+    assert match_exclusions("全新Sony A7M4资料", ["Sony A7M4"]) == ["Sony A7M4"]
+    assert match_exclusions("Nikon Z8 教程", ["Sony A7M4"]) == []
 
 
-def test_candidates_skip_baseline_and_keyword(tmp_path: Path) -> None:
+def test_candidates_skip_baseline_but_keep_discovery_keyword(tmp_path: Path) -> None:
     conn = init_db(tmp_path / "t.sqlite3")
     seller = "sellerA"
     # baseline
@@ -51,7 +51,8 @@ def test_candidates_skip_baseline_and_keyword(tmp_path: Path) -> None:
     cands = list_candidates(conn)
     titles = {c["sample_title"] for c in cands}
     assert "Photoshop 教程" in titles
-    assert not any("Sony A7M4 进阶" in t for t in titles)
+    assert "Sony A7M4 进阶" in titles
+    assert r2["candidates"]["skipped_target"] == 0
     conn.close()
 
 

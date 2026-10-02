@@ -23,6 +23,8 @@ const scanErrors = { incomplete: "分页不完整", count_drop: "商品数骤降
 const pageSize = 20;
 const viewState = { sellerId: null, sellerOffset: 0, eventsOffset: 0, candidatesOffset: 0 };
 let catalogSelectionScan = null;
+let rulesNextOffset = 0;
+const scanReview = { id: null, offset: 0 };
 
 function updateCatalogSelection() {
   const boxes = $$(".catalog-select:not(:disabled)");
@@ -295,6 +297,9 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   catalogSelectionScan = data.selection_scan_id;
   $("#sellerTags").value = (seller.tags || []).join(", ");
   $("#sellerNotes").value = seller.notes || "";
+  $("#candidateExcludePatterns").value = (seller.candidate_exclude_patterns || []).join("\n");
+  $("#sellerDiscoveryKeywords").textContent = `发现来源关键词：${seller.keywords || "无"}`;
+  setResult("#candidateRulesResult", "");
   setResult("#sellerMetadataResult", "");
   $("#sellerDetail").hidden = false;
   $("#sellerRoster").hidden = true;
@@ -355,7 +360,44 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   }
   showPager("sellerItems", offset, data.total_items);
   updateCatalogSelection();
+  if (!$("#seller-pane-rules").hidden) await loadRulePreview(sellerId);
   if (activate) activateTab("pool");
+}
+
+async function loadRulePreview(sellerId, offset = 0) {
+  const data = await api(`/api/pool/${encodeURIComponent(sellerId)}/candidate-rules?limit=${pageSize}&offset=${offset}`);
+  if (viewState.sellerId !== sellerId) return;
+  const list = $("#candidateRulesMatches");
+  if (!offset) list.replaceChildren();
+  for (const match of data.matches) {
+    const row = document.createElement("div");
+    row.className = "rule-match";
+    row.textContent = `${match.title || match.item_id} · 命中：${match.matched_patterns.join("、")}`;
+    list.appendChild(row);
+  }
+  rulesNextOffset = offset + data.matches.length;
+  $("#candidateRulesSummary").textContent = `当前已存目录：命中 ${data.total} 件，已显示 ${rulesNextOffset} 件`;
+  $("#candidateRulesMore").hidden = rulesNextOffset >= data.total;
+  return data;
+}
+
+async function openScanReview(scanId, offset = 0) {
+  scanReview.id = scanId;
+  const data = await api(`/api/scan/runs/${encodeURIComponent(scanId)}/candidate-decisions?limit=${pageSize}&offset=${offset}`);
+  if (scanReview.id !== scanId) return;
+  scanReview.offset = offset;
+  $("#scanCandidateReview").hidden = false;
+  $("#scanCandidateReviewTitle").textContent = `选品判断 · ${scanId}`;
+  const body = $("#scanDecisionsBody");
+  body.replaceChildren();
+  if (!data.decisions.length) addEmptyRow(body, "本次扫描没有选品判断记录", 3);
+  const labels = { baseline: "首次扫描基线", excluded: "自动排除", candidate: "进入候选" };
+  for (const item of data.decisions) {
+    const row = document.createElement("tr");
+    [item.title || item.item_id, labels[item.decision] || item.decision, item.matched_patterns.join("、") || "无"].forEach(value => addCell(row, value));
+    body.appendChild(row);
+  }
+  showPager("scanDecisions", offset, data.total);
 }
 
 function addOption(select, value, label) {
@@ -547,12 +589,19 @@ async function refreshScanRuns() {
   const data = await api("/api/scan/runs?limit=10");
   const body = $("#scanRunsBody");
   body.replaceChildren();
-  if (!data.runs.length) return addEmptyRow(body, "暂无扫描记录", 5);
+  if (!data.runs.length) return addEmptyRow(body, "暂无扫描记录", 6);
   for (const run of data.runs) {
     const row = document.createElement("tr");
     const diagnosis = scanErrors[run.error_kind] || run.error_kind || runStatuses[run.status] || run.status;
     const detail = run.page_count ? `${diagnosis} · ${run.page_count} 页 · 预期 ${run.expected_count ?? "未知"} · ${run.finish_reason || "—"}` : diagnosis;
     [formatTime(run.started_at), run.seller_id, run.item_count, run.event_count, detail].forEach((value) => addCell(row, value));
+    const cell = document.createElement("td");
+    const button = document.createElement("button");
+    button.className = "ghost tiny";
+    button.textContent = "查看判断";
+    button.addEventListener("click", () => openScanReview(run.id).catch(error => toast(error.message)));
+    cell.appendChild(button);
+    row.appendChild(cell);
     body.appendChild(row);
   }
 }
@@ -591,7 +640,10 @@ $$(".tab").forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));
 });
 $$("[data-seller-view]").forEach(button => {
-  button.addEventListener("click", () => selectSellerView(button.dataset.sellerView));
+  button.addEventListener("click", () => {
+    selectSellerView(button.dataset.sellerView);
+    if (button.dataset.sellerView === "rules" && viewState.sellerId) loadRulePreview(viewState.sellerId).catch(error => toast(error.message));
+  });
 });
 $("#btnRefresh").addEventListener("click", () => withBusy($("#btnRefresh"), "…", async () => {
   try {
@@ -690,6 +742,36 @@ $("#sellerItemFilters").addEventListener("submit", (event) => {
   event.preventDefault();
   if (viewState.sellerId) openSeller(viewState.sellerId).catch(error => toast(error.message));
 });
+
+$("#candidateRulesForm").addEventListener("submit", event => {
+  event.preventDefault();
+  const sellerId = viewState.sellerId;
+  if (!sellerId) return;
+  const exclude_patterns = $("#candidateExcludePatterns").value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+  withBusy(event.currentTarget.querySelector('button[type="submit"]'), "保存中…", async () => {
+    try {
+      await api(`/api/pool/${encodeURIComponent(sellerId)}/candidate-rules`, { method: "PATCH", body: JSON.stringify({ exclude_patterns }) });
+      const data = await loadRulePreview(sellerId);
+      if (viewState.sellerId !== sellerId) return;
+      $("#candidateExcludePatterns").value = data.exclude_patterns.join("\n");
+      setResult("#candidateRulesResult", "排除规则已保存");
+    } catch (error) {
+      if (viewState.sellerId === sellerId) setResult("#candidateRulesResult", error.message, true);
+    }
+  });
+});
+$("#candidateRulesMore").addEventListener("click", () => withBusy($("#candidateRulesMore"), "加载中…", async () => {
+  try { await loadRulePreview(viewState.sellerId, rulesNextOffset); } catch (error) { toast(error.message); }
+}));
+$("#closeScanReview").addEventListener("click", () => {
+  scanReview.id = null;
+  $("#scanCandidateReview").hidden = true;
+});
+for (const [direction, delta] of [["Prev", -1], ["Next", 1]]) {
+  $(`#scanDecisions${direction}`).addEventListener("click", () => {
+    if (scanReview.id) openScanReview(scanReview.id, scanReview.offset + delta * pageSize).catch(error => toast(error.message));
+  });
+}
 
 $("#catalogSelectAll").addEventListener("change", event => {
   $$(".catalog-select:not(:disabled)").forEach(box => { box.checked = event.target.checked; });

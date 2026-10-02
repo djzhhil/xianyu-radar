@@ -14,6 +14,11 @@ def normalize_title(title: str) -> str:
     return re.sub(r"[\s\[\]【】()（）\-_/\\|]+", "", title)
 
 
+def match_exclusions(title: str, patterns: list[str]) -> list[str]:
+    normalized = normalize_title(title)
+    return [pattern for pattern in patterns if normalize_title(pattern) and normalize_title(pattern) in normalized]
+
+
 def add_candidate_source(
     conn: sqlite3.Connection, seller_id: str, item: SellerItem, *,
     source_type: str, scan_id: str | None = None, observed_at: str | None = None,

@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '..');
 const artifactDir = process.env.RADAR_UI_ARTIFACT_DIR || '/tmp/xianyu-radar-workbench';
 require('fs').mkdirSync(artifactDir, { recursive: true });
 const code = `from pathlib import Path
-import tempfile, uvicorn
+import tempfile, uvicorn, json
 from xianyu_radar import config as cfg
 cfg.DATA_DIR=Path(tempfile.mkdtemp(prefix="radar-ui-"))
 cfg.STATE_DIR=cfg.DATA_DIR/"state"
@@ -22,6 +22,7 @@ conn.execute("UPDATE items SET image='https://images.example.test/broken.png' WH
 conn.execute("INSERT INTO scans(id,seller_id,started_at,status,item_count,finish_reason) VALUES ('ok','12345','t','ok',25,'end_marker')")
 conn.execute("INSERT INTO item_snapshots(item_id,seller_id,title,price,image,captured_at,scan_id) SELECT item_id,seller_id,title,COALESCE(price,''),image,'2026-10-02T00:00:00Z','ok' FROM items")
 conn.execute("INSERT INTO scans(id,seller_id,started_at,status,error_kind) VALUES ('bad','12345','t','failed','incomplete')")
+conn.execute("INSERT INTO candidate_scan_decisions(scan_id,item_id,title,decision,matched_patterns) VALUES ('ok','23','FDE 23','excluded',?)", (json.dumps(["FDE 23"]),))
 conn.executemany("INSERT INTO candidates(normalized_title,sample_title,first_seen_at,last_seen_at,status) VALUES (?,?, '2026-10-02T00:00:00Z','2026-10-02T00:00:00Z',?)", [("fde-interview","FDE 面试资料","new"),("fde-project","FDE 项目案例","testing"),("fde-learning","FDE 学习资料","validated")])
 conn.commit()
 conn.close()
@@ -33,8 +34,9 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('server startup timeout')), 15000);
-      server.stderr.on('data', d => { if (d.toString().includes('Uvicorn running')) { clearTimeout(timer); resolve(); } });
-      server.on('exit', c => reject(new Error(`server exited ${c}`)));
+      let stderr = '';
+      server.stderr.on('data', d => { stderr += d.toString(); if (d.toString().includes('Uvicorn running')) { clearTimeout(timer); resolve(); } });
+      server.on('exit', c => { clearTimeout(timer); reject(new Error(`server exited ${c}: ${stderr}`)); });
     });
     browser = await chromium.launch({ executablePath: process.env.RADAR_BROWSER_PATH || undefined, args: ['--no-sandbox'], headless: true });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -64,6 +66,17 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     assert.match(await page.locator('#addSellerResult').innerText(), /暂停/);
     assert.equal(await page.locator('#sellerNotes').inputValue(), '同品商家，优先参考');
     assert.equal(await page.locator('#sellerTags').inputValue(), 'FDE, 重点');
+    await page.click('[data-seller-view="rules"]');
+    await page.fill('#candidateExcludePatterns', ' FDE 23 \nfde23');
+    await page.click('#candidateRulesForm button');
+    await page.waitForFunction(() => document.querySelector('#candidateRulesResult').textContent.includes('已保存'));
+    assert.equal(await page.locator('#candidateExcludePatterns').inputValue(), 'FDE 23');
+    assert.match(await page.locator('#candidateRulesMatches').innerText(), /FDE 23.*命中/);
+    await page.screenshot({ path: `${artifactDir}/workbench-rules-desktop.png`, fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${artifactDir}/workbench-rules-mobile.png`, fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.click('[data-seller-view="sources"]');
     assert.equal(await page.locator('#sellerEntriesBody tr').count(), 1);
     await page.click('[data-seller-view="catalog"]');
@@ -139,8 +152,15 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
     await page.goto('http://127.0.0.1:18766/#scan');
     await page.waitForFunction(() => document.querySelector('#pageTitle').textContent === '扫描与变化');
+    await page.locator('#scanRunsBody tr').filter({ hasText: '成功' }).locator('button').click();
+    await page.waitForFunction(() => document.querySelector('#scanDecisionsBody').textContent.includes('自动排除'));
+    assert.match(await page.locator('#scanDecisionsBody').innerText(), /FDE 23/);
+    await page.screenshot({ path: `${artifactDir}/workbench-decisions-mobile.png`, fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    await page.click('#closeScanReview');
+    assert.equal(await page.locator('#scanCandidateReview').isVisible(), false);
     assert.deepEqual(errors, []);
-    console.log('PASS: manual seller, metadata, catalog pagination/filter/quality, invalid URL, mobile form, no JS errors');
+    console.log('PASS: seller, catalog selection, candidate sources, exclusion rules, scan decisions, desktop/mobile, no JS errors');
   } finally {
     if (browser) await browser.close();
     server.kill('SIGTERM');

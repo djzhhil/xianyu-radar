@@ -28,6 +28,32 @@ class SellerMetadataBody(BaseModel):
     tags: list[str] = Field(max_length=20)
 
 
+class CandidateRulesBody(BaseModel):
+    exclude_patterns: list[str] = Field(max_length=20)
+
+
+@router.patch("/{seller_id}/candidate-rules")
+def patch_candidate_rules(seller_id: str, body: CandidateRulesBody, conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    try:
+        updated = service.change_candidate_rules(conn, seller_id, body.exclude_patterns)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if not updated:
+        raise HTTPException(status_code=404, detail="seller not found in pool")
+    return {"updated": True}
+
+
+@router.get("/{seller_id}/candidate-rules")
+def preview_candidate_rules(
+    seller_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0, conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    result = service.preview_candidate_rules(conn, seller_id, limit=limit, offset=offset)
+    if result is None:
+        raise HTTPException(status_code=404, detail="seller not found in pool")
+    return result
+
+
 @router.patch("/{seller_id}/metadata")
 def patch_metadata(
     seller_id: str, body: SellerMetadataBody, conn: sqlite3.Connection = Depends(get_db)

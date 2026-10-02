@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from xianyu_radar.entrypoints.api.deps import event_to_dict, get_db, require_session
 from xianyu_radar.infrastructure.storage.auth_state import is_auth_paused
-from xianyu_radar.modules.scan.history import list_scan_runs
+from xianyu_radar.modules.scan.history import list_scan_runs, list_candidate_decisions
 from xianyu_radar.modules.scan.runner import run_pool_once
 from xianyu_radar.modules.scan.service import scan_seller
 
@@ -36,6 +36,16 @@ def get_scan_run(scan_id: str, conn: sqlite3.Connection = Depends(get_db)) -> di
         "SELECT * FROM scan_pages WHERE scan_id=? ORDER BY page_number", (scan_id,)
     ).fetchall()
     return {"run": dict(run), "pages": [dict(page) for page in pages]}
+
+
+@router.get("/runs/{scan_id}/candidate-decisions")
+def get_candidate_decisions(
+    scan_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0, conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    if not conn.execute("SELECT 1 FROM scans WHERE id=?", (scan_id,)).fetchone():
+        raise HTTPException(status_code=404, detail="扫描记录不存在")
+    return list_candidate_decisions(conn, scan_id, limit=limit, offset=offset)
 
 
 class ScanSellerBody(BaseModel):

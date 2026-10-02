@@ -89,6 +89,10 @@ td code { font-size: 12px; }
 #sellerCatalogQuality { color: #526859; background: #f1f7f3; border-left: 3px solid #86b19a; padding: 10px 12px; font-size: 12px; margin-bottom: 18px; }
 #sellerMetadataForm { max-width: 620px; display: grid; gap: 8px; }
 #sellerMetadataForm button { justify-self: start; margin-top: 6px; }
+#candidateRulesForm { max-width: 620px; display: grid; gap: 8px; }
+#candidateRulesForm button { justify-self: start; }
+#candidateRulesMatches { margin-bottom: 12px; }
+.rule-match { border-top: 1px solid var(--line); padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
 .catalog-image { width: 56px; height: 56px; display: grid; place-items: center; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; }
 .catalog-image img { width: 100%; height: 100%; object-fit: contain; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }

@@ -72,6 +72,22 @@ def test_manual_seller_add_is_idempotent_and_preserves_paused_state(conn) -> Non
     assert pool.get_seller_detail("12345", conn=conn)["seller"]["nickname"] == "示例"
 
 
+def test_candidate_rule_endpoints_and_unknown_scan(conn) -> None:
+    pool.add_seller(pool.AddSellerBody(reference="12345"), conn)
+    assert pool.patch_candidate_rules("12345", pool.CandidateRulesBody(exclude_patterns=["FDE"]), conn)["updated"]
+    assert pool.preview_candidate_rules("12345", conn=conn)["exclude_patterns"] == ["FDE"]
+    assert pool.get_seller_detail("12345", conn=conn)["seller"]["candidate_exclude_patterns"] == ["FDE"]
+    with pytest.raises(HTTPException) as error:
+        pool.patch_candidate_rules("12345", pool.CandidateRulesBody(exclude_patterns=["!!"]), conn)
+    assert error.value.status_code == 400
+    with pytest.raises(HTTPException) as error:
+        pool.preview_candidate_rules("missing", conn=conn)
+    assert error.value.status_code == 404
+    with pytest.raises(HTTPException) as error:
+        scan.get_candidate_decisions("missing", conn=conn)
+    assert error.value.status_code == 404
+
+
 def test_seller_metadata_normalizes_tags_and_survives_repeat_add(conn) -> None:
     pool.add_seller(pool.AddSellerBody(reference="12345"), conn)
     pool.patch_metadata("12345", pool.SellerMetadataBody(notes="  已验证的同品商家  ", tags=[" FDE ", "FDE", "重点", ""]), conn)

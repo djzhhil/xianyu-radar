@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>商家池 · 闲鱼补货工作台</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=20261002-workbench" />
+  <link rel="stylesheet" href="/assets/styles.css?v=20261002-candidate-review" />
 </head>
 <body>
   <aside class="sidebar">
@@ -98,6 +98,7 @@
           <button type="button" class="active" data-seller-view="catalog" aria-current="page">商品目录</button>
           <button type="button" data-seller-view="metadata">备注与标签</button>
           <button type="button" data-seller-view="sources">入池来源</button>
+          <button type="button" data-seller-view="rules">筛选规则</button>
         </nav>
         <div class="seller-pane" id="seller-pane-metadata" hidden>
         <form id="sellerMetadataForm">
@@ -108,6 +109,19 @@
           <button type="submit"><i data-lucide="save"></i>保存备注与标签</button>
           <p class="result-message" id="sellerMetadataResult" role="status"></p>
         </form>
+        </div>
+        <div class="seller-pane" id="seller-pane-rules" hidden>
+          <p class="hint" id="sellerDiscoveryKeywords"></p>
+          <form id="candidateRulesForm">
+            <label for="candidateExcludePatterns">自动候选排除词（每行一项）</label>
+            <textarea id="candidateExcludePatterns" rows="4" maxlength="1700"></textarea>
+            <button type="submit">保存排除规则</button>
+            <p id="candidateRulesResult" class="result-message" role="status"></p>
+          </form>
+          <h4>已存在售商品的命中预览</h4>
+          <p id="candidateRulesSummary" class="hint"></p>
+          <div id="candidateRulesMatches"></div>
+          <button type="button" class="ghost tiny" id="candidateRulesMore" hidden>更多命中商品</button>
         </div>
         <div class="seller-pane" id="seller-pane-sources" hidden>
         <h4>入池来源</h4>
@@ -158,9 +172,14 @@
       </details>
       <h3>最近扫描记录</h3>
       <div class="table-wrap"><table>
-        <thead><tr><th>时间</th><th>商家 ID</th><th>商品数</th><th>事件数</th><th>结果</th></tr></thead>
+        <thead><tr><th>时间</th><th>商家 ID</th><th>商品数</th><th>事件数</th><th>结果</th><th>选品判断</th></tr></thead>
         <tbody id="scanRunsBody"></tbody>
       </table></div>
+      <section id="scanCandidateReview" hidden>
+        <div class="panel-head events-head"><h3 id="scanCandidateReviewTitle">选品判断</h3><button type="button" class="ghost tiny" id="closeScanReview">收起</button></div>
+        <div class="table-wrap"><table><thead><tr><th>商品</th><th>判断</th><th>命中排除词</th></tr></thead><tbody id="scanDecisionsBody"></tbody></table></div>
+        <div class="pager"><button type="button" class="ghost icon-button" id="scanDecisionsPrev" aria-label="上一页" title="上一页"><i data-lucide="chevron-left"></i></button><span id="scanDecisionsPage"></span><button type="button" class="ghost icon-button" id="scanDecisionsNext" aria-label="下一页" title="下一页"><i data-lucide="chevron-right"></i></button></div>
+      </section>
       <div class="panel-head events-head">
         <h3>扫描事件</h3>
         <select id="evtSince" aria-label="事件时间范围">
@@ -221,6 +240,6 @@
 
   <div class="toast" id="toast" hidden></div>
   <script src="/assets/icons.js?v=20261002-workbench"></script>
-  <script src="/assets/app.js?v=20261002-workbench"></script>
+  <script src="/assets/app.js?v=20261002-candidate-review"></script>
 </body>
 </html>

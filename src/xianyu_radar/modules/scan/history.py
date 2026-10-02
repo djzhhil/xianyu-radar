@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from datetime import datetime, timezone
 
 from xianyu_radar.models import SellerItem
@@ -29,6 +30,15 @@ def list_scan_runs(
         (*params, limit, offset),
     ).fetchall()
     return {"total": total, "runs": [dict(row) for row in rows], "limit": limit, "offset": offset}
+
+
+def list_candidate_decisions(conn: sqlite3.Connection, scan_id: str, *, limit: int = 100, offset: int = 0) -> dict:
+    total = conn.execute("SELECT COUNT(*) FROM candidate_scan_decisions WHERE scan_id=?", (scan_id,)).fetchone()[0]
+    rows = conn.execute("SELECT * FROM candidate_scan_decisions WHERE scan_id=? ORDER BY item_id LIMIT ? OFFSET ?", (scan_id, limit, offset)).fetchall()
+    decisions = [dict(row) for row in rows]
+    for decision in decisions:
+        decision["matched_patterns"] = json.loads(decision["matched_patterns"])
+    return {"decisions": decisions, "total": total, "limit": limit, "offset": offset}
 
 
 def write_snapshots(

@@ -139,7 +139,18 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
 def _seller_record(row: sqlite3.Row) -> dict:
     record = dict(row)
     record["tags"] = json.loads(record["tags"])
+    record["candidate_exclude_patterns"] = json.loads(record["candidate_exclude_patterns"])
     return record
+
+
+def set_candidate_rules(conn: sqlite3.Connection, seller_id: str, patterns: list[str]) -> bool:
+    with conn:
+        result = conn.execute(
+            "UPDATE sellers SET candidate_exclude_patterns=? WHERE seller_id=? AND EXISTS ("
+            "SELECT 1 FROM seller_pool_entries WHERE seller_id=? AND active=1)",
+            (json.dumps(patterns, ensure_ascii=False), seller_id, seller_id),
+        )
+    return result.rowcount > 0
 
 
 def set_seller_metadata(conn: sqlite3.Connection, seller_id: str, notes: str, tags: list[str]) -> bool:
