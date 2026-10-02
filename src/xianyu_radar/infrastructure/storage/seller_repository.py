@@ -135,6 +135,27 @@ def list_pool(conn: sqlite3.Connection, *, status: str | None = "watching") -> l
     return [dict(r) for r in rows]
 
 
+def add_manual_seller(conn: sqlite3.Connection, seller_id: str, nickname: str | None) -> bool:
+    now = _now()
+    with conn:
+        conn.execute(
+            "INSERT INTO sellers(seller_id, nickname, first_seen_at, last_seen_at) "
+            "VALUES (?,?,?,?) ON CONFLICT(seller_id) DO NOTHING",
+            (seller_id, nickname, now, now),
+        )
+        exists = conn.execute(
+            "SELECT 1 FROM seller_pool_entries WHERE seller_id=? AND reason='manual' AND active=1",
+            (seller_id,),
+        ).fetchone()
+        if exists:
+            return False
+        conn.execute(
+            "INSERT INTO seller_pool_entries(seller_id, reason, joined_at) VALUES (?, 'manual', ?)",
+            (seller_id, now),
+        )
+    return True
+
+
 def get_pool_seller_detail(
     conn: sqlite3.Connection, seller_id: str, *, limit: int = 20, offset: int = 0
 ) -> dict | None:

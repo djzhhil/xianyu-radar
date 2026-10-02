@@ -72,6 +72,7 @@ radar discover --keyword "你的已验证商品名" --resume-run-id <runId> --ma
 
 # 2) 查看商家池
 radar pool list
+radar pool add 'https://www.goofish.com/personal?userId=123456' --nickname '重点商家'
 radar pool set-status <sellerId> paused|watching|dropped
 
 # 3) 扫描（是否为 baseline 取决于该卖家已有的商品记录）

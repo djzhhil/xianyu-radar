@@ -256,7 +256,7 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   if (!data.entries.length) addEmptyRow(entriesBody, "暂无入池记录", 4);
   for (const entry of data.entries) {
     const row = document.createElement("tr");
-    [entry.source_keyword, entry.source_item_id, entry.reason, entry.joined_at].forEach((value) => addCell(row, value));
+    [entry.source_keyword, entry.source_item_id, entry.reason === "manual" ? "手动添加" : entry.reason, entry.joined_at].forEach((value) => addCell(row, value));
     entriesBody.appendChild(row);
   }
   const itemsBody = $("#sellerItemsBody");
@@ -514,6 +514,23 @@ $("#discoverForm").addEventListener("submit", (event) => {
       setLog("#discoverLog", error.message);
       setResult("#discoverResult", error.message, true);
       toast(error.message);
+    }
+  });
+});
+
+$("#addSellerForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = Object.fromEntries(new FormData(form));
+  withBusy(form.querySelector('button[type="submit"]'), "添加中…", async () => {
+    try {
+      const result = await api("/api/pool", { method: "POST", body: JSON.stringify(payload) });
+      form.reset();
+      setResult("#addSellerResult", `${result.added ? "已添加" : "已在商家池"}：${result.seller_id} · ${poolStatuses[result.status] || result.status}`);
+      await Promise.all([refreshPool(), refreshStatus()]);
+      await openSeller(result.seller_id);
+    } catch (error) {
+      setResult("#addSellerResult", error.message, true);
     }
   });
 });

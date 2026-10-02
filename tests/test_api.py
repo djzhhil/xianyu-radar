@@ -60,6 +60,28 @@ def test_app_has_one_data_environment() -> None:
     assert status.health()["ok"] is True
 
 
+def test_manual_seller_add_is_idempotent_and_preserves_paused_state(conn) -> None:
+    first = pool.add_seller(pool.AddSellerBody(reference="12345", nickname="示例"), conn)
+    assert first == {"seller_id": "12345", "added": True, "status": "watching"}
+    pool.patch_seller("12345", pool.StatusBody(status="paused"), conn)
+    second = pool.add_seller(pool.AddSellerBody(
+        reference="https://www.goofish.com/personal?userId=12345&foo=bar"
+    ), conn)
+    assert second == {"seller_id": "12345", "added": False, "status": "paused"}
+    assert conn.execute("SELECT COUNT(*) FROM seller_pool_entries").fetchone()[0] == 1
+    assert pool.get_seller_detail("12345", conn=conn)["seller"]["nickname"] == "示例"
+
+
+@pytest.mark.parametrize("reference", ["0", "unknown:123", "１２３", "-1",
+    "https://evil.example/personal?userId=123", "https://www.goofish.com/item?id=123",
+    "https://www.goofish.com/personal?userId=123&userId=456"])
+def test_manual_seller_rejects_invalid_reference_without_writes(conn, reference) -> None:
+    with pytest.raises(HTTPException) as error:
+        pool.add_seller(pool.AddSellerBody(reference=reference), conn)
+    assert error.value.status_code == 400
+    assert conn.execute("SELECT COUNT(*) FROM sellers").fetchone()[0] == 0
+
+
 def test_web_rejects_cross_site_writes() -> None:
     called = []
     sent = []

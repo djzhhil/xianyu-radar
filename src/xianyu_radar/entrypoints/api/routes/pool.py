@@ -6,7 +6,7 @@ import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from xianyu_radar.entrypoints.api.deps import get_db
 from xianyu_radar.modules.pool import service
@@ -16,6 +16,19 @@ router = APIRouter()
 
 class StatusBody(BaseModel):
     status: str
+
+
+class AddSellerBody(BaseModel):
+    reference: str = Field(min_length=1, max_length=2048)
+    nickname: str | None = Field(default=None, max_length=100)
+
+
+@router.post("")
+def add_seller(body: AddSellerBody, conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    try:
+        return service.add_seller(conn, body.reference, body.nickname)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.get("")

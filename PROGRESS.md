@@ -1,5 +1,13 @@
 # Progress log (Phase 4)
 
+## 补货阶段 T1.1 — 手动添加商家（2026-10-02）
+
+- 分支：`codex/t1-manual-seller`。
+- 新增 `POST /api/pool`、`radar pool add` 和商家池添加表单；接受正整数商家 ID 或闲鱼 `/personal?userId=` 链接。
+- 独立记录 `manual` 来源，重复添加去重，保留已有昵称及暂停/停止状态；添加不触发在线采集。
+- 验证：77 项回归测试通过，JavaScript 语法检查通过；临时数据库 Playwright 验证添加、暂停后重复添加、错误链接及桌面/移动截图。
+- 本块不含备注标签和目录改进，它们各用独立分支继续实现。
+
 ## Task 01 — 工程骨架与数据库 schema
 - **Date:** 2026-09-12
 - **Result:** PASS (`pytest` schema tests)

@@ -143,6 +143,21 @@ def cmd_pool_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pool_add(args: argparse.Namespace) -> int:
+    from xianyu_radar.modules.pool import service
+
+    conn = _conn()
+    try:
+        result = service.add_seller(conn, args.reference, args.nickname)
+    except ValueError as error:
+        print(str(error))
+        return 1
+    finally:
+        conn.close()
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def cmd_fetch_seller(args: argparse.Namespace) -> int:
     try:
         session = load_session(args.state)
@@ -332,6 +347,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("pool", help="Seller pool")
     pool_sub = p.add_subparsers(dest="pool_cmd", required=True)
+    p_add = pool_sub.add_parser("add", help="Add a known seller ID or Goofish profile URL")
+    p_add.add_argument("reference")
+    p_add.add_argument("--nickname")
+    p_add.set_defaults(func=cmd_pool_add)
     p_list = pool_sub.add_parser("list")
     p_list.add_argument("--all", action="store_true")
     p_list.set_defaults(func=cmd_pool_list)
