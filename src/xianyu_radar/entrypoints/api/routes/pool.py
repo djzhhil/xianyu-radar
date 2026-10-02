@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -63,9 +63,13 @@ def get_seller_detail(
     seller_id: str,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    query: Annotated[str, Query(max_length=200)] = "",
+    item_status: Literal["", "active", "removed", "unknown"] = "",
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
-    detail = service.get_pool_seller_detail(conn, seller_id, limit=limit, offset=offset)
+    detail = service.get_pool_seller_detail(
+        conn, seller_id, limit=limit, offset=offset, query=query.strip(), item_status=item_status
+    )
     if detail is None:
         raise HTTPException(status_code=404, detail="seller not found in pool")
     return detail

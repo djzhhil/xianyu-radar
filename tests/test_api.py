@@ -165,6 +165,25 @@ def test_pool_detail_and_run_history_read_stored_data(conn) -> None:
     assert error.value.status_code == 404
 
 
+def test_catalog_filters_and_failed_scan_keep_complete_reference(conn) -> None:
+    pool.add_seller(pool.AddSellerBody(reference="12345"), conn)
+    conn.executemany(
+        "INSERT INTO items(item_id,seller_id,title,status,first_seen_at,last_seen_at) "
+        "VALUES (?,'12345',?,?, 't','t')",
+        [("1", "FDE v1", "active"), ("2", "FDE v2", "removed"), ("3", "100% 教程", "active")],
+    )
+    conn.execute("INSERT INTO scans(id,seller_id,started_at,status,item_count) VALUES ('ok','12345','t','ok',3)")
+    conn.execute("INSERT INTO scans(id,seller_id,started_at,status,error_kind) VALUES ('bad','12345','t','failed','incomplete')")
+    conn.commit()
+    data = pool.get_seller_detail("12345", query="fde", item_status="active", limit=1, offset=0, conn=conn)
+    assert data["total_items"] == 1
+    assert data["items"][0]["item_id"] == "1"
+    assert data["latest_complete_scan"]["id"] == "ok"
+    assert data["latest_scan"]["id"] == "bad"
+    assert pool.get_seller_detail("12345", query="%", conn=conn)["total_items"] == 1
+    assert pool.get_seller_detail("12345", query="fde", limit=1, offset=1, conn=conn)["items"][0]["item_id"] == "2"
+
+
 def test_events_and_candidates_have_stable_pages_and_totals(conn) -> None:
     add_seller_from_discovery(
         conn, seller_id="SELLER_TEST", nickname="Example", source_keyword="camera", source_item_id=None

@@ -244,7 +244,12 @@ async function refreshDiscoveryRuns() {
 }
 
 async function openSeller(sellerId, offset = 0, activate = true) {
-  const data = await api(`/api/pool/${encodeURIComponent(sellerId)}?limit=${pageSize}&offset=${offset}`);
+  if (viewState.sellerId !== sellerId) {
+    $("#sellerItemQuery").value = "";
+    $("#sellerItemStatus").value = "";
+  }
+  const query = new URLSearchParams({ limit: pageSize, offset, query: $("#sellerItemQuery").value, item_status: $("#sellerItemStatus").value });
+  const data = await api(`/api/pool/${encodeURIComponent(sellerId)}?${query}`);
   viewState.sellerId = sellerId;
   viewState.sellerOffset = offset;
   const seller = data.seller;
@@ -254,6 +259,14 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   $("#sellerDetail").hidden = false;
   $("#sellerDetailTitle").textContent = `${seller.nickname || seller.seller_id} · ${seller.seller_id}`;
   $("#sellerDetailMeta").textContent = `状态：${poolStatuses[seller.status] || seller.status} · 最近扫描：${seller.last_scan_at || "暂无"} · 连续失败：${seller.consecutive_failures || 0} · 已存商品：${data.total_items}`;
+  const complete = data.latest_complete_scan;
+  const latest = data.latest_scan;
+  $("#sellerCatalogQuality").textContent = complete
+    ? `最近完整扫描：${complete.finished_at || complete.started_at} · ${complete.item_count} 件 · 当前筛选 ${data.total_items} 件`
+    : "尚无完整扫描记录";
+  if (latest && latest.status !== "ok") {
+    $("#sellerCatalogQuality").textContent += `；最近扫描：${scanErrors[latest.error_kind] || runStatuses[latest.status] || latest.status} · ${latest.finished_at || latest.started_at}`;
+  }
   const entriesBody = $("#sellerEntriesBody");
   entriesBody.replaceChildren();
   if (!data.entries.length) addEmptyRow(entriesBody, "暂无入池记录", 4);
@@ -264,7 +277,7 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   }
   const itemsBody = $("#sellerItemsBody");
   itemsBody.replaceChildren();
-  if (!data.items.length) addEmptyRow(itemsBody, "暂无已存商品。请先扫描该商家。", 6);
+  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 6);
   for (const item of data.items) {
     const row = document.createElement("tr");
     [item.title || item.item_id, item.price, itemStatuses[item.status] || item.status, itemSources[item.source] || item.source, item.last_seen_at].forEach((value) => addCell(row, value));
@@ -552,6 +565,11 @@ $("#sellerMetadataForm").addEventListener("submit", (event) => {
       if (viewState.sellerId === sellerId) setResult("#sellerMetadataResult", error.message, true);
     }
   });
+});
+
+$("#sellerItemFilters").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (viewState.sellerId) openSeller(viewState.sellerId).catch(error => toast(error.message));
 });
 
 $("#btnScan").addEventListener("click", () => withBusy($("#btnScan"), "扫描中…", async () => {

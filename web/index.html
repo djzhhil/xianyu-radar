@@ -110,6 +110,17 @@
           <tbody id="sellerEntriesBody"></tbody>
         </table></div>
         <h4>已存商品</h4>
+        <p id="sellerCatalogQuality" role="status"></p>
+        <form id="sellerItemFilters" class="row-form">
+          <input type="text" id="sellerItemQuery" aria-label="商品标题" placeholder="搜索商品标题" maxlength="200" />
+          <select id="sellerItemStatus" aria-label="商品状态">
+            <option value="">全部状态</option>
+            <option value="active">在售</option>
+            <option value="removed">已下架</option>
+            <option value="unknown">未知</option>
+          </select>
+          <button type="submit">筛选</button>
+        </form>
         <p class="hint">这里包含关键词搜索留下的商品和商家扫描保存的商品；仅发现而未扫描的商家通常没有完整列表。</p>
         <div class="table-wrap"><table>
           <thead><tr><th>商品</th><th>价格</th><th>状态</th><th>来源</th><th>最近发现</th><th>链接</th></tr></thead>

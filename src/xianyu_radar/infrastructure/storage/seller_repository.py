@@ -174,7 +174,8 @@ def add_manual_seller(conn: sqlite3.Connection, seller_id: str, nickname: str | 
 
 
 def get_pool_seller_detail(
-    conn: sqlite3.Connection, seller_id: str, *, limit: int = 20, offset: int = 0
+    conn: sqlite3.Connection, seller_id: str, *, limit: int = 20, offset: int = 0,
+    query: str = "", item_status: str = ""
 ) -> dict | None:
     """Read one pool seller, its discovery sources, and stored catalog page."""
     seller = conn.execute(
@@ -192,16 +193,32 @@ def get_pool_seller_detail(
         "FROM seller_pool_entries WHERE seller_id=? ORDER BY joined_at DESC, id DESC",
         (seller_id,),
     ).fetchall()
-    total_items = conn.execute(
-        "SELECT COUNT(*) FROM items WHERE seller_id=?", (seller_id,)
-    ).fetchone()[0]
+    conditions = ["seller_id=?"]
+    params: list[object] = [seller_id]
+    if query:
+        conditions.append("instr(lower(COALESCE(title,'')),lower(?)) > 0")
+        params.append(query)
+    if item_status:
+        conditions.append("status=?")
+        params.append(item_status)
+    where = " AND ".join(conditions)
+    total_items = conn.execute("SELECT COUNT(*) FROM items WHERE " + where, params).fetchone()[0]
     items = conn.execute(
         "SELECT item_id, title, price, url, category, status, first_seen_at, "
-        "last_seen_at, check_count, source FROM items WHERE seller_id=? "
+        "last_seen_at, check_count, source FROM items WHERE " + where + " "
         "ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, "
         "last_seen_at DESC, item_id DESC LIMIT ? OFFSET ?",
-        (seller_id, limit, offset),
+        (*params, limit, offset),
     ).fetchall()
+    scan_columns = "id, started_at, finished_at, status, error_kind, item_count, page_count, finish_reason"
+    latest = conn.execute(
+        "SELECT " + scan_columns + " FROM scans WHERE seller_id=? ORDER BY rowid DESC LIMIT 1",
+        (seller_id,),
+    ).fetchone()
+    complete = conn.execute(
+        "SELECT " + scan_columns + " FROM scans WHERE seller_id=? AND status='ok' ORDER BY rowid DESC LIMIT 1",
+        (seller_id,),
+    ).fetchone()
     return {
         "seller": _seller_record(seller),
         "entries": [dict(row) for row in entries],
@@ -209,6 +226,8 @@ def get_pool_seller_detail(
         "total_items": total_items,
         "limit": limit,
         "offset": offset,
+        "latest_scan": dict(latest) if latest else None,
+        "latest_complete_scan": dict(complete) if complete else None,
     }
 
 
