@@ -9,7 +9,7 @@
 | `README.md` | 安装、运行、常用命令和项目边界。 |
 | `pyproject.toml` | Python 依赖、打包、`radar` 与 `radar-web` 命令配置。 |
 | `src/xianyu_radar/` | Python 程序源码。 |
-| `web/` | `index.html` 与 `app.js` 提供工作台；`item.html` 与 `item.js` 提供商品详情独立页面；共用样式和图标。 |
+| `web/` | `index.html` 与 `app.js` 提供工作台，`common.js` 提供工作台公共工具；`item.html` 与 `item.js` 提供商品详情独立页面；共用样式和图标。 |
 | `tests/` | 自动测试；`fixtures/` 是离线闲鱼响应样本。 |
 | `scripts/` | 手动冒烟步骤。 |
 | `docs/` | 当前代码地图和登录态格式说明。 |
@@ -62,6 +62,8 @@ src/xianyu_radar/
 `routes/` 按 HTTP 地址分文件，`modules/` 按业务能力分文件。这是两种不同维度：门牌负责接请求，业务区负责完成工作。
 
 工作台导航有五个视图：登录态、发现商家、商家池、扫描变化和候选商品。商家商品目录中的“商品详情”打开独立页面，由第六个模块 `products` 获取商品数据；“查看商品”仍跳转闲鱼。商品、事件和候选列表按页读取。
+
+工作台脚本使用浏览器原生 ES 模块：`app.js` 从 `common.js` 导入 DOM 查询、API 请求、提示、按钮忙碌状态、时间格式化、表格渲染、安全链接和分页工具。公共工具不导入业务页面；页面业务、状态和事件绑定暂时仍在 `app.js`，按分类逐步拆分。独立商品详情页 `item.js` 保持不变。
 
 工作台列表读取本地 SQLite：`GET /api/discover/runs`、`GET /api/pool/{seller_id}`、`GET /api/scan/runs`、`GET /api/events` 和 `GET /api/candidates`。开始发现、手动扫描、登录态在线检查会请求闲鱼。商品详情页 `/items/{item_id}` 在打开或点击刷新时调用 `GET /api/items/{item_id}/detail`，实时请求闲鱼；详情统计目前不落库，缺失值显示“未知”。工作台各类刷新请求分别处理失败，页面导航和目录打开独立执行。
 

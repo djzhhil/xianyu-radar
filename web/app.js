@@ -1,5 +1,7 @@
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
+import {
+  $, $$, api, toast, setResult, setLog, withBusy, formatTime,
+  addCell, addEmptyRow, safeLink, addLinkCell, showPager, addOption, pageSize,
+} from "./common.js";
 
 const poolStatuses = {
   watching: "监控中",
@@ -20,7 +22,6 @@ const itemStatuses = { active: "在售", removed: "已下架", unknown: "未知"
 const itemSources = { discovery: "关键词发现", seller_scan: "商家扫描" };
 const runStatuses = { running: "进行中", ok: "成功", failed: "失败", suspect: "待复核", partial: "部分完成", parse_failed: "解析失败", rate_limit: "已限流", verification_required: "需要验证", auth: "登录态失效" };
 const scanErrors = { incomplete: "分页不完整", count_drop: "商品数骤降，等待复扫" };
-const pageSize = 20;
 const viewState = { sellerId: null, sellerOffset: 0, eventsOffset: 0, candidatesOffset: 0 };
 let catalogSelectionScan = null;
 let rulesNextOffset = 0;
@@ -34,55 +35,6 @@ function updateCatalogSelection() {
   $("#catalogSelectAll").checked = boxes.length > 0 && count === boxes.length;
   $("#catalogSelectAll").indeterminate = count > 0 && count < boxes.length;
   $("#catalogSelectAll").disabled = boxes.length === 0;
-}
-
-async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const text = await res.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = { raw: text };
-  }
-  if (!res.ok) {
-    const detail = data?.detail || data?.error || res.statusText;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-  }
-  return data;
-}
-
-function toast(message) {
-  const el = $("#toast");
-  el.hidden = false;
-  el.textContent = message;
-  clearTimeout(toast.timeout);
-  toast.timeout = setTimeout(() => { el.hidden = true; }, 3200);
-}
-
-function setResult(selector, message, isError = false) {
-  const el = $(selector);
-  el.textContent = message;
-  el.classList.toggle("error", isError);
-}
-
-function setLog(selector, value) {
-  $(selector).textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-}
-
-async function withBusy(button, busyText, action) {
-  const content = [...button.childNodes];
-  button.disabled = true;
-  button.textContent = busyText;
-  try {
-    await action();
-  } finally {
-    button.disabled = false;
-    button.replaceChildren(...content);
-  }
 }
 
 function activateTab(name) {
@@ -102,16 +54,6 @@ function activateTab(name) {
 }
 
 window.addEventListener("hashchange", () => activateTab(location.hash.slice(1)));
-
-function formatTime(value) {
-  if (!value) return "暂无";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(date);
-}
 
 function selectSellerView(name) {
   $$("[data-seller-view]").forEach(button => {
@@ -165,54 +107,6 @@ function parseCookieInput(raw) {
     throw new Error("Cookie 缺少 _m_h5_tk，无法签名闲鱼请求");
   }
   return { cookie: text.replace(/\r?\n/g, " ").trim() };
-}
-
-function addCell(row, value, asCode = false) {
-  const cell = document.createElement("td");
-  if (asCode) {
-    const code = document.createElement("code");
-    code.textContent = String(value ?? "—");
-    cell.appendChild(code);
-  } else {
-    cell.textContent = String(value ?? "—");
-  }
-  row.appendChild(cell);
-  return cell;
-}
-
-function addEmptyRow(body, message, columns) {
-  const row = document.createElement("tr");
-  addCell(row, message).colSpan = columns;
-  body.appendChild(row);
-}
-
-function safeLink(url, label = "查看商品") {
-  try {
-    const target = new URL(url);
-    if (!["http:", "https:"].includes(target.protocol)) throw new Error("unsupported URL");
-    const link = document.createElement("a");
-    link.href = target.href;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = label;
-    return link;
-  } catch {
-    return document.createTextNode("—");
-  }
-}
-
-function addLinkCell(row, url, label = "查看商品") {
-  const cell = document.createElement("td");
-  cell.appendChild(safeLink(url, label));
-  row.appendChild(cell);
-}
-
-function showPager(prefix, offset, total) {
-  const page = Math.floor(offset / pageSize) + 1;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  $(`#${prefix}Page`).textContent = `第 ${page} / ${pages} 页 · 共 ${total} 条`;
-  $(`#${prefix}Prev`).disabled = offset === 0;
-  $(`#${prefix}Next`).disabled = offset + pageSize >= total;
 }
 
 function renderDiscoverItems(items) {
@@ -404,13 +298,6 @@ async function openScanReview(scanId, offset = 0) {
     body.appendChild(row);
   }
   showPager("scanDecisions", offset, data.total);
-}
-
-function addOption(select, value, label) {
-  const option = document.createElement("option");
-  option.value = value;
-  option.textContent = label;
-  select.appendChild(option);
 }
 
 async function refreshPool() {

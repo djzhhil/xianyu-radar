@@ -46,6 +46,20 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto('http://127.0.0.1:18766');
+    assert.equal(await page.locator('script[type="module"][src*="app.js"]').count(), 1);
+    const common = await page.evaluate(async () => {
+      const tools = await import('/assets/common.js');
+      return {
+        exports: Object.keys(tools).sort(),
+        pageSize: tools.pageSize,
+        invalidTime: tools.formatTime('not-a-date'),
+        unsafeLink: tools.safeLink('javascript:alert(1)').textContent,
+      };
+    });
+    assert.deepEqual(common.exports, ['$', '$$', 'addCell', 'addEmptyRow', 'addLinkCell', 'addOption', 'api', 'formatTime', 'pageSize', 'safeLink', 'setLog', 'setResult', 'showPager', 'toast', 'withBusy'].sort());
+    assert.equal(common.pageSize, 20);
+    assert.equal(common.invalidTime, 'not-a-date');
+    assert.equal(common.unsafeLink, '—');
     await page.click('[data-tab="pool"]');
     await page.fill('#addSellerForm [name="reference"]', 'https://www.goofish.com/personal?userId=12345');
     await page.fill('#addSellerForm [name="nickname"]', '测试商家');
