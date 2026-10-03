@@ -54,6 +54,40 @@ def test_pagination_merges_pages() -> None:
     assert [i.item_id for i in catalog.items] == ["1", "2", "3"]
 
 
+def test_recommendation_bootstrap_switches_to_newest_and_excludes_sold() -> None:
+    bootstrap = {"data": {"totalCount": 0, "nextPage": True,
+        "nextPageNum": 1, "nextPageModel": "sell", "cardList": [_card(1)],
+        "itemGroupList": [{"groupId": 100, "defaultGroup": True,
+                           "groupSortList": [{"groupSortId": "newest", "groupSortName": "最新"}]}]}}
+    active = _card(2)
+    active["cardData"].update(itemStatus=0, picInfo={"picUrl": "https://img.alicdn.com/2.jpg"})
+    sold = _card(3)
+    sold["cardData"]["itemStatus"] = 1
+    inventory = {"data": {"totalCount": 0, "nextPage": False,
+                           "cardList": [active, sold]}}
+    with patch("xianyu_radar.modules.scan.fetcher.call_mtop", side_effect=[bootstrap, inventory]) as call:
+        catalog = get_seller_items(Session("cookie", "token", "test"), "999")
+    assert catalog.complete
+    assert catalog.page_count == 1
+    assert [item.item_id for item in catalog.items] == ["2"]
+    assert catalog.items[0].image == "https://img.alicdn.com/2.jpg"
+    assert call.call_args_list[1].args[2]["groupId"] == 100
+    assert call.call_args_list[1].args[2]["groupSortId"] == "newest"
+    assert call.call_args_list[1].args[2]["needGroupInfo"] is False
+
+
+def test_pagination_forwards_platform_model_and_cursor() -> None:
+    first = {"data": {"nextPage": True, "nextPageNum": 1,
+                       "nextPageModel": "sell", "cardList": [_card(1)]}}
+    second = {"data": {"nextPage": False, "cardList": [_card(2)]}}
+    with patch("xianyu_radar.modules.scan.fetcher.call_mtop", side_effect=[first, second]) as call:
+        catalog = get_seller_items(Session("cookie", "token", "test"), "999")
+    assert catalog.complete
+    assert [item.item_id for item in catalog.items] == ["1", "2"]
+    assert call.call_args_list[1].args[2]["nextPageModel"] == "sell"
+    assert call.call_args_list[1].args[2]["nextPageNum"] == 1
+
+
 def test_incomplete_catalog_reports_missing_items() -> None:
     payload = {
         "data": {

@@ -31,6 +31,8 @@ def get_seller_items(
     page_count = 0
     visited_pages: set[int] = set()
     diagnostics: list[dict] = []
+    group_params: dict[str, Any] = {}
+    cursor: dict[str, Any] = {}
 
     def result(reason: str, complete: bool) -> SellerCatalog:
         return SellerCatalog(all_items, total_count, page_count, reason, complete, diagnostics)
@@ -43,15 +45,36 @@ def get_seller_items(
             session,
             "idle.web.xyh.item.list",
             {
-                "needGroupInfo": True,
+                "needGroupInfo": not bool(group_params),
                 "pageNumber": page,
                 "userId": str(seller_id),
                 "pageSize": page_size,
+                **group_params,
+                **cursor,
             },
             {"spm_cnt": "a21ybx.personal.0.0"},
         )
         page_count += 1
         data = payload.get("data") or {}
+        if not group_params:
+            groups = data.get("itemGroupList") or []
+            for group in groups if isinstance(groups, list) else []:
+                if not isinstance(group, dict):
+                    continue
+                sorts = group.get("groupSortList") or []
+                newest = next((sort for sort in sorts if isinstance(sort, dict)
+                               and sort.get("groupSortId") == "newest"), None)
+                if newest and group.get("groupId") is not None:
+                    group_params = {"groupId": group["groupId"],
+                                    "groupName": newest.get("groupSortName") or "最新",
+                                    "defaultGroup": bool(group.get("defaultGroup")),
+                                    "groupSortId": "newest"}
+                    # The initial recommendation page is not a complete inventory page.
+                    visited_pages.remove(page)
+                    page_count -= 1
+                    break
+            if group_params:
+                continue
         raw_total = data.get("totalCount")
         total_error = None
         if raw_total is not None:
@@ -69,7 +92,8 @@ def get_seller_items(
 
         raw_cards = data.get("cardList") or []
         cards_valid = isinstance(raw_cards, list)
-        batch = parse_shop_card_list(payload) if cards_valid else []
+        parsed_batch = parse_shop_card_list(payload) if cards_valid else []
+        batch = [item for item in parsed_batch if item.raw_status != "1"]
         new = 0
         for it in batch:
             if it.item_id in seen:
@@ -88,7 +112,7 @@ def get_seller_items(
             "total_type": type(raw_total).__name__,
             "total_value": str(raw_total) if isinstance(raw_total, int) and not isinstance(raw_total, bool) or (isinstance(raw_total, str) and raw_total.isdigit()) else None,
             "card_count": len(raw_cards) if cards_valid else 0,
-            "parsed_count": len(batch),
+            "parsed_count": len(parsed_batch),
             "next_field": next_field,
             "next_page": str(next_page) if isinstance(next_page, (bool, int)) or (isinstance(next_page, str) and (next_page.isdigit() or next_page.lower() in {"true", "false"})) else None,
             "unique_count": len(all_items),
@@ -100,16 +124,16 @@ def get_seller_items(
             return result(total_error, False)
         if not cards_valid:
             return result("invalid_card_list", False)
-        if len(batch) != len(raw_cards):
+        if len(parsed_batch) != len(raw_cards):
             return result("unparsed_cards", False)
-        if not batch:
+        if not parsed_batch:
             if page_count == 1 and explicit_end and raw_total == 0:
                 total_count = 0
                 return result("empty_catalog", True)
             if page_count > 1 and explicit_end and all_items and total_count is None:
                 return result("end_marker", True)
             return result("empty_page", False)
-        if new == 0:
+        if new == 0 and batch:
             return result("duplicate_page", False)
         if new != len(batch):
             return result("duplicate_items", False)
@@ -119,11 +143,16 @@ def get_seller_items(
         if total_count is not None and len(all_items) == total_count:
             return result("total_count", True)
 
-        if explicit_end or (next_page is None and len(batch) < page_size):
+        if explicit_end or (next_page is None and len(parsed_batch) < page_size):
             complete = total_count is None or len(all_items) == total_count
             return result("end_marker" if explicit_end else "short_page", complete)
 
-        if next_page is None or next_page is True or str(next_page).lower() == "true":
+        model = data.get("nextPageModel")
+        cursor_number = data.get("nextPageNum")
+        if isinstance(model, str) and model and isinstance(cursor_number, (int, str)) and not isinstance(cursor_number, bool):
+            cursor = {"nextPageModel": model, "nextPageNum": cursor_number}
+            page += 1
+        elif next_page is None or next_page is True or str(next_page).lower() == "true":
             page += 1
         elif str(next_page).isdigit():
             following = int(next_page)
