@@ -67,6 +67,8 @@ def init_db(db_path: Path | None = None, *, check_same_thread: bool = True) -> s
                 if not any(f"ADD COLUMN {column} " in statement
                            for column in ("pooled", "pool_entry_id") if column in columns)
             )
+        if version == 11 and any(row["name"] == "next_field" for row in conn.execute("PRAGMA table_info(scan_pages)")):
+            migration = ""
         try:
             conn.executescript(
                 "BEGIN IMMEDIATE;\n"

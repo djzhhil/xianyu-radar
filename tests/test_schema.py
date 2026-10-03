@@ -59,6 +59,44 @@ def test_v9_discovery_pool_compat_preserves_records(tmp_path, missing_columns):
         conn.close()
 
 
+@pytest.mark.parametrize("missing_column", [True, False])
+def test_v10_scan_compat_preserves_history_and_saves_images(tmp_path, monkeypatch, missing_column):
+    from xianyu_radar.infrastructure.goofish.session import Session
+    from xianyu_radar.modules.scan.service import scan_seller
+
+    db_path = tmp_path / "v10.sqlite3"
+    conn = init_db(db_path)
+    conn.execute(
+        "INSERT INTO scan_pages(scan_id,page_number,total_type,card_count,parsed_count,unique_count,next_field) "
+        "VALUES ('old',1,'int',1,1,1,'nextPage')"
+    )
+    if missing_column:
+        conn.execute("ALTER TABLE scan_pages DROP COLUMN next_field")
+    conn.execute("UPDATE meta SET value='10' WHERE key='schema_version'")
+    conn.commit()
+    conn.close()
+    conn = init_db(db_path)
+    row = conn.execute("SELECT card_count,next_field FROM scan_pages WHERE scan_id='old'").fetchone()
+    assert tuple(row) == (1, None if missing_column else "nextPage")
+
+    image = "https://img.alicdn.com/example.jpg"
+    payload = {"data": {"totalCount": 1, "nextPage": False, "cardList": [
+        {"cardData": {"id": "123", "title": "item", "picInfo": {"picUrl": image}}}
+    ]}}
+    monkeypatch.setattr("xianyu_radar.modules.scan.fetcher.call_mtop", lambda *args, **kwargs: payload)
+    result = scan_seller(conn, Session("cookie", "token", "test"), "456")
+    assert result["status"] == "ok"
+    assert conn.execute("SELECT image FROM items WHERE item_id='123'").fetchone()[0] == image
+    assert conn.execute("SELECT image FROM item_snapshots WHERE item_id='123'").fetchone()[0] == image
+    assert conn.execute("SELECT next_field FROM scan_pages WHERE scan_id=?", (result["scan_id"],)).fetchone()[0] == "nextPage"
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    conn.close()
+    conn = init_db(db_path)
+    assert get_schema_version(conn) == SCHEMA_VERSION
+    assert conn.execute("SELECT COUNT(*) FROM scan_pages").fetchone()[0] == 2
+    conn.close()
+
+
 def test_init_db_is_idempotent(tmp_path: Path) -> None:
     db_path = tmp_path / "radar.sqlite3"
     conn1 = init_db(db_path)
