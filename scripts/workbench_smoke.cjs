@@ -56,7 +56,7 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
         unsafeLink: tools.safeLink('javascript:alert(1)').textContent,
       };
     });
-    assert.deepEqual(common.exports, ['$', '$$', 'addCell', 'addEmptyRow', 'addLinkCell', 'addOption', 'api', 'formatTime', 'pageSize', 'safeLink', 'setLog', 'setResult', 'showPager', 'toast', 'withBusy'].sort());
+    assert.deepEqual(common.exports, ['$', '$$', 'addCell', 'addEmptyRow', 'addLinkCell', 'addOption', 'api', 'formatTime', 'pageSize', 'runStatuses', 'safeLink', 'setLog', 'setResult', 'showPager', 'toast', 'withBusy'].sort());
     assert.equal(common.pageSize, 20);
     assert.equal(common.invalidTime, 'not-a-date');
     assert.equal(common.unsafeLink, '—');
@@ -78,6 +78,19 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     await page.click('#addSellerForm button');
     await page.waitForFunction(() => document.querySelector('#addSellerResult').textContent.includes('已添加'));
     await page.waitForSelector('#sellerDetail:not([hidden])');
+    await page.route('**/api/discover', route => route.fulfill({ json: {
+      status: 'ok', page_count: 1, raw_result_count: 1, item_count: 1,
+      unique_seller_count: 1, new_sellers: 0, skipped_no_seller: 0, unparsed_count: 0,
+      items: [{ item_id: '24', title: '发现商品', price: '20', seller_id: '12345', url: 'https://www.goofish.com/item?id=24' }],
+    } }));
+    await page.click('[data-tab="discover"]');
+    await page.fill('#discoverForm [name="keyword"]', '测试关键词');
+    await page.click('#discoverForm button[type="submit"]');
+    await page.waitForFunction(() => document.querySelector('#discoverResult').textContent.includes('识别商家 1 个'));
+    await page.locator('#discoverBody button').click();
+    await page.waitForSelector('#sellerDetail:not([hidden])');
+    assert.equal(await page.locator('#tab-pool').isVisible(), true);
+    await page.unroute('**/api/discover');
     await page.click('[data-seller-view="metadata"]');
     await page.fill('#sellerTags', 'FDE, FDE, 重点');
     await page.fill('#sellerNotes', '同品商家，优先参考');

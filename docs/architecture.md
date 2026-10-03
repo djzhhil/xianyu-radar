@@ -69,6 +69,7 @@ src/xianyu_radar/
 | --- | --- |
 | `web/common.js` | DOM 查询、API 请求、提示、按钮忙碌状态、时间格式化、表格、安全链接和分页工具。 |
 | `web/auth.js` | 系统数量、登录态展示、Cookie 校验和保存；通过入口传入的回调切换到登录页。 |
+| `web/discovery.js` | 搜索表单、搜索结果、发现历史、诊断及继续任务；打开商家和全局刷新由入口协调。 |
 
 工作台列表读取本地 SQLite：`GET /api/discover/runs`、`GET /api/pool/{seller_id}`、`GET /api/scan/runs`、`GET /api/events` 和 `GET /api/candidates`。开始发现、手动扫描、登录态在线检查会请求闲鱼。商品详情页 `/items/{item_id}` 在打开或点击刷新时调用 `GET /api/items/{item_id}/detail`，实时请求闲鱼；详情统计目前不落库，缺失值显示“未知”。工作台各类刷新请求分别处理失败，页面导航和目录打开独立执行。
 
