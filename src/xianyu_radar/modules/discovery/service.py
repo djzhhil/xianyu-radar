@@ -17,6 +17,7 @@ from xianyu_radar.infrastructure.storage.seller_repository import add_seller_fro
 from xianyu_radar.models import SeedItem
 from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
 from xianyu_radar.modules.discovery.keyword_search import search
+from xianyu_radar.modules.discovery.pagination import following_page
 
 
 def _now() -> str:
@@ -187,22 +188,6 @@ def _save_page(conn: sqlite3.Connection, run_id: str, page: int, found: list[See
     return unique - before
 
 
-def _following_page(found: list[SeedItem], page: int, rows_per_page: int) -> tuple[int, str | None]:
-    signal = getattr(found, "next_page", None)
-    if signal is None:
-        signal = getattr(found, "has_next", None)
-    if signal in (False, "false", 0, "0"):
-        return 0, None
-    if signal is True or str(signal).lower() == "true":
-        return page + 1, None
-    if signal is not None:
-        if str(signal).isdigit() and int(signal) > page:
-            return int(signal), None
-        return page, "invalid_next_page"
-    raw_count = getattr(found, "raw_count", len(found))
-    return (page + 1, None) if raw_count >= rows_per_page else (0, None)
-
-
 def _finish(conn: sqlite3.Connection, run_id: str, keyword: str,
             status: str, error_kind: str | None) -> dict:
     conn.execute(
@@ -298,7 +283,7 @@ def discover_sellers(
         try:
             found = search(keyword, session) if page == 1 else search(keyword, session, page_number=page)
             raw_count = getattr(found, "raw_count", len(found))
-            following, page_error = _following_page(found, page, rows_per_page)
+            following, page_error = following_page(found, page, rows_per_page)
             added = _save_page(
                 conn, run_id, page, found, raw_count,
                 getattr(found, "entries", None), getattr(found, "next_page", None),
