@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 
 from xianyu_radar.models import SeedItem
+from xianyu_radar.infrastructure.catalog_quality import is_trusted_scan
 
 
 def _now() -> str:
@@ -230,7 +231,7 @@ def get_pool_seller_detail(
         "SELECT " + scan_columns + " FROM scans WHERE seller_id=? AND status='ok' ORDER BY rowid DESC LIMIT 1",
         (seller_id,),
     ).fetchone()
-    selection_scan_id = complete["id"] if complete and complete["finish_reason"] in {"end_marker", "short_page", "total_count"} else None
+    selection_scan_id = complete["id"] if complete and is_trusted_scan(complete["status"], complete["finish_reason"]) else None
     catalog_items = []
     for row in items:
         item = dict(row)

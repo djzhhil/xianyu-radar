@@ -635,11 +635,18 @@ async function refreshEvents() {
 }
 
 async function refreshAll() {
-  const [status] = await Promise.all([
+  const labels = ["系统状态", "商家池", "候选商品", "变化事件", "发现记录", "扫描记录"];
+  const results = await Promise.allSettled([
     refreshStatus(), refreshPool(), refreshCandidates(), refreshEvents(), refreshDiscoveryRuns(), refreshScanRuns(),
   ]);
-  if (viewState.sellerId) await openSeller(viewState.sellerId, viewState.sellerOffset, false);
-  return status;
+  const errors = results.flatMap((result, index) => result.status === "rejected"
+    ? [`${labels[index]}加载失败：${result.reason.message || result.reason}`] : []);
+  if (viewState.sellerId) {
+    try { await openSeller(viewState.sellerId, viewState.sellerOffset, false); }
+    catch (error) { errors.push(`商品目录加载失败：${error.message}`); }
+  }
+  if (errors.length) toast(errors.join("；"));
+  return { status: results[0].status === "fulfilled" ? results[0].value : null, errors };
 }
 
 $$(".tab").forEach((button) => {
@@ -653,9 +660,8 @@ $$("[data-seller-view]").forEach(button => {
 });
 $("#btnRefresh").addEventListener("click", () => withBusy($("#btnRefresh"), "…", async () => {
   try {
-    await refreshAll();
-    if (viewState.sellerId) await openSeller(viewState.sellerId, viewState.sellerOffset, false);
-    toast("数据已刷新");
+    const result = await refreshAll();
+    if (!result.errors.length) toast("数据已刷新");
   } catch (error) { toast(error.message); }
 }));
 $("#authPill").addEventListener("click", () => {
@@ -861,10 +867,9 @@ $("#evtSince").addEventListener("change", () => {
   refreshEvents().catch((error) => toast(error.message));
 });
 
-refreshAll()
-  .then(async () => {
-    activateTab(location.hash.slice(1) || "pool");
-    const seller = new URLSearchParams(location.search).get("seller");
-    if (seller && /^[0-9]+$/.test(seller) && (!location.hash || location.hash === "#pool")) await openSeller(seller);
-  })
-  .catch((error) => toast(error.message));
+activateTab(location.hash.slice(1) || "pool");
+refreshAll().catch((error) => toast(error.message));
+const initialSeller = new URLSearchParams(location.search).get("seller");
+if (initialSeller && /^[0-9]+$/.test(initialSeller) && (!location.hash || location.hash === "#pool")) {
+  openSeller(initialSeller).catch((error) => toast(error.message));
+}

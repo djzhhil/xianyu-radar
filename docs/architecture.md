@@ -1,6 +1,6 @@
-# 代码地图：五条业务路线
+# 代码地图：六个业务模块
 
-把目录当作地图看：`entrypoints/api/routes/` 是用户进入项目的门，`modules/` 是五块业务区域，`infrastructure/` 是各区域共用的通道与仓库工具。目录在磁盘上同级，并不表示运行时也同级：请求由 API 入口进入业务模块，业务模块使用基础设施，最后返回结果。
+`entrypoints/api/routes/` 接收请求，`modules/` 完成业务，`infrastructure/` 提供共用的闲鱼协议、数据读写和规则。请求按这个方向执行；业务模块不直接导入其他业务模块。
 
 ## 第一层：项目区域
 
@@ -9,7 +9,7 @@
 | `README.md` | 安装、运行、常用命令和项目边界。 |
 | `pyproject.toml` | Python 依赖、打包、`radar` 与 `radar-web` 命令配置。 |
 | `src/xianyu_radar/` | Python 程序源码。 |
-| `web/` | 浏览器页面：`index.html` 页面结构、`styles.css` 样式、`app.js` 发 HTTP 请求并展示结果。 |
+| `web/` | `index.html` 与 `app.js` 提供工作台；`item.html` 与 `item.js` 提供商品详情独立页面；共用样式和图标。 |
 | `tests/` | 自动测试；`fixtures/` 是离线闲鱼响应样本。 |
 | `scripts/` | 手动冒烟步骤。 |
 | `docs/` | 当前代码地图和登录态格式说明。 |
@@ -27,16 +27,18 @@ src/xianyu_radar/
 │   │   ├── deps.py             数据库连接、会话、时间和事件响应辅助函数
 │   │   └── routes/             按 HTTP 地址分发到业务模块
 │   └── cli.py                  radar 命令入口；与 API 是并列入口
-├── modules/                     五个业务模块；service.py 是各模块对外的主入口
+├── modules/                     六个业务模块；service.py 是各模块对外的主入口
 │   ├── auth/                    保存、查看和检查登录态
 │   ├── discovery/               搜索商品、发现卖家并入池
 │   ├── pool/                    查看商家池、修改商家状态
 │   ├── scan/                    扫描商家、比较变化、生成事件和候选
-│   └── candidates/              查看候选商品、修改审核状态
+│   ├── candidates/              查看候选商品、修改审核状态
+│   └── products/                实时获取并展示单件商品详情
 ├── infrastructure/              多条业务链路共用的技术能力
 │   ├── goofish/                闲鱼会话解析与 MTOP 请求
 │   ├── storage/                SQLite 连接、schema、商家数据和认证暂停状态
-│   └── item_identity.py        商品 ID 与 URL 的统一规则
+│   ├── item_identity.py        商品 ID 与 URL 的统一规则
+│   └── catalog_quality.py      目录与选品共用的可信扫描判断
 ├── config.py                    数据路径和扫描参数
 ├── models.py                    业务链路传递的数据结构
 └── __init__.py                  包版本
@@ -54,15 +56,16 @@ src/xianyu_radar/
 | `routes/scan.py` | 扫描单个商家或整个商家池 | `scan/service.py`、`scan/runner.py` |
 | `routes/events.py` | 查看扫描产生的商品事件 | `scan/service.py` |
 | `routes/candidates.py` | 查看候选及概览、按审核状态筛选、改变候选审核状态 | `candidates/service.py` |
+| `routes/products.py` | 获取单件商品详情，处理验证、限流和登录态错误 | `products/service.py` |
 | `routes/status.py` | 健康检查与系统概览 | 系统查询 |
 
 `routes/` 按 HTTP 地址分文件，`modules/` 按业务能力分文件。这是两种不同维度：门牌负责接请求，业务区负责完成工作。
 
-Web 页面按这五块业务区显示五个步骤：登录态、发现商家、商家池、扫描商家、候选商品。发现页显示本次搜索商品和最近发现记录；商家池可打开商家详情、入池来源和已存商品；扫描页显示最近扫描记录与事件前后值；候选页显示价格、商品链接、发现时间和审核状态。商品、事件和候选列表按页读取。扫描产生的事件在“扫描商家”页查看；“扫描全部”和“扫描单个”共用一个扫描入口，通过选择范围区分。
+工作台导航有五个视图：登录态、发现商家、商家池、扫描变化和候选商品。商家商品目录中的“商品详情”打开独立页面，由第六个模块 `products` 获取商品数据；“查看商品”仍跳转闲鱼。商品、事件和候选列表按页读取。
 
-这些展示只读本地 SQLite。对应查询入口是 `GET /api/discover/runs`、`GET /api/pool/{seller_id}`、`GET /api/scan/runs`、`GET /api/events` 和 `GET /api/candidates`；打开页面不会请求闲鱼。点击“开始发现”或“开始扫描”才进入在线流程。
+工作台列表读取本地 SQLite：`GET /api/discover/runs`、`GET /api/pool/{seller_id}`、`GET /api/scan/runs`、`GET /api/events` 和 `GET /api/candidates`。开始发现、手动扫描、登录态在线检查会请求闲鱼。商品详情页 `/items/{item_id}` 在打开或点击刷新时调用 `GET /api/items/{item_id}/detail`，实时请求闲鱼；详情统计目前不落库，缺失值显示“未知”。工作台各类刷新请求分别处理失败，页面导航和目录打开独立执行。
 
-### 五块业务区内部
+### 六个业务模块内部
 
 | 目录 | 文件与职责 |
 | --- | --- |
@@ -71,6 +74,7 @@ Web 页面按这五块业务区显示五个步骤：登录态、发现商家、�
 | `pool/` | `service.py`：商家列表与状态修改的业务入口。实际商家表读写由共用的 `infrastructure/storage/seller_repository.py` 完成。 |
 | `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照、查扫描记录；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
 | `candidates/` | `service.py`：候选列表与状态修改入口；`repository.py`：候选表查询、状态更新。 |
+| `products/` | `service.py`：调用商品详情接口，仅请求商品数据，提取商品信息和统计；不读写商家、扫描或候选表。 |
 
 `infrastructure/goofish/session.py` 从 Cookie JSON 建立会话；`mtop.py` 计算签名并访问闲鱼接口。`infrastructure/storage/db.py` 连接和初始化 SQLite，`schema.sql` 定义表，`seller_repository.py` 读写商家池相关表，`auth_state.py` 管理认证暂停标志。发现和扫描都需要闲鱼协议；发现、商家池和扫描都需要访问商家数据，所以这些代码放在共用区域。
 
@@ -84,15 +88,34 @@ flowchart LR
   API --> Pool[pool/service.py]
   API --> Scan[scan/service.py 或 runner.py]
   API --> Candidate[candidates/service.py]
+  API --> Product[products/service.py]
   Discover --> Infra[infrastructure]
   Auth --> Infra
   Pool --> Infra
   Scan --> Infra
   Candidate --> DB[(SQLite)]
+  Product --> Infra
   Infra --> DB
 ```
 
-箭头表示代码调用方向。五个 `modules/` 子目录之间没有直接 Python 导入。它们可以读写同一个 SQLite 数据库：例如发现把商家入池，后来的扫描再从池中读取；扫描写出候选，候选模块后来读取。这是**通过数据衔接业务流程**，不是 `discovery.py` 直接调用 `scan.py`。
+箭头表示代码调用方向。六个业务模块之间没有直接 Python 导入。发现、商家池、扫描和候选通过共享 SQLite 数据衔接流程；商品详情通过公共闲鱼客户端取得数据。模块边界测试自动发现业务模块，同时检查基础设施没有反向导入业务模块。
+
+### 数据表职责
+
+“主要维护”表示该表的业务职责；参与者通过现有服务、公共仓库或明确的 SQL 操作衔接数据，并非独占数据库表。
+
+| 表 | 主要维护 | 参与读写与用途 |
+| --- | --- | --- |
+| `sellers`、`seller_pool_entries` | 商家池；公共 `storage/seller_repository.py` 管理主要读写 | 发现建立商家与来源、冲突时撤销来源；扫描更新扫描时间和失败次数；候选检查池成员资格。 |
+| `watch_keywords` | 发现 | 保存已使用的关键词；状态概览读取。 |
+| `discovery_runs`、`discovery_pages`、`discovery_items`、`discovery_entries` | 发现 | 记录搜索、卖家识别、断点和诊断；发现 API 查询记录。 |
+| `items` | 扫描维护当前目录；公共商家仓库写搜索种子 | 发现写入已识别商品并处理来源冲突；商家池读取目录；候选读取链接、匹配排除规则。 |
+| `scans`、`scan_pages`、`item_snapshots`、`item_events` | 扫描 | 商家池读取扫描质量和快照；候选核对最新可信快照；事件 API 只读查询。 |
+| `candidates`、`candidate_sellers`、`candidate_sources` | 候选；公共 `storage/candidate_repository.py` 统一来源写入 | 扫描自动添加候选来源；候选模块手动选品、查询和审核。 |
+| `candidate_scan_decisions` | 扫描 | 保存基线、排除、候选判断；扫描历史接口读取。 |
+| `meta` | 存储基础设施与登录态状态 | `db.py` 维护 schema 版本；扫描标记认证暂停，登录态模块清除暂停。 |
+
+目录是否可选与候选是否可加入，统一使用 `infrastructure/catalog_quality.py` 的 `is_trusted_scan()`。规则为 `status='ok'` 且结束原因是 `end_marker`、`short_page` 或 `total_count`；调用者仍分别检查最新扫描、快照归属和商家成员资格。新增数据库字段必须新增迁移，不通过修改已执行的迁移来升级旧库。
 
 ### 1. 保存或检查登录态
 
@@ -117,6 +140,10 @@ flowchart LR
 ### 5. 查看候选与事件
 
 候选：`web/app.js` → `GET /api/candidates`（`routes/candidates.py`）→ `candidates/service.py` → `candidates/repository.py` → `candidates`、`candidate_sellers` 表。候选列表可按时间、数据质量和审核状态筛选；同一响应的 `summary` 按时间和数据质量汇总状态数量及多商家出现数量。事件：`routes/events.py` → `scan/service.py` → `scan/events.py` → `item_events` 表。这里读取先前扫描写出的结果，没有反向调用扫描执行流程。
+
+### 6. 查看单件商品详情
+
+`web/item.js` → `routes/products.py` → `products/service.py` → `infrastructure/goofish/mtop.py` → `mtop.taobao.idle.pc.detail`。请求设置 `needSellerDO=false`，响应仅展示商品 ID、标题、售价、发布时间、主图和统计；验证失败时显示提示并允许手动重试。返回链接携带商家 ID，重新打开原商家目录。
 
 ## 阅读顺序
 

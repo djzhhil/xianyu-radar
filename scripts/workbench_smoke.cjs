@@ -159,6 +159,22 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
     await page.click('#closeScanReview');
     assert.equal(await page.locator('#scanCandidateReview').isVisible(), false);
+    const failCandidates = route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: 'candidate failure' }) });
+    await page.route('**/api/candidates?**', failCandidates);
+    await page.goto('http://127.0.0.1:18766/?seller=12345#pool');
+    await page.waitForFunction(() => !document.querySelector('#sellerDetail').hidden);
+    await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('候选商品加载失败'));
+    assert.equal(await page.locator('#sellerItemsBody tr').count() > 0, true);
+    await page.click('#btnRefresh');
+    await page.waitForFunction(() => !document.querySelector('#btnRefresh').disabled);
+    assert.match(await page.locator('#toast').innerText(), /候选商品加载失败/);
+    await page.goto('http://127.0.0.1:18766/#scan');
+    await page.waitForFunction(() => document.querySelector('#pageTitle').textContent === '扫描与变化');
+    assert.equal(await page.locator('#tab-scan').isVisible(), true);
+    await page.unroute('**/api/candidates?**', failCandidates);
+    await page.click('#btnRefresh');
+    await page.waitForFunction(() => !document.querySelector('#btnRefresh').disabled);
+    assert.equal(await page.locator('#toast').innerText(), '数据已刷新');
     assert.deepEqual(errors, []);
     console.log('PASS: seller, catalog selection, candidate sources, exclusion rules, scan decisions, desktop/mobile, no JS errors');
   } finally {

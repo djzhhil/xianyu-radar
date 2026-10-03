@@ -8,7 +8,32 @@ from xianyu_radar.infrastructure.storage.candidate_repository import add_candida
 from xianyu_radar.modules.candidates.service import select_catalog
 from xianyu_radar.modules.pool.service import add_seller
 from xianyu_radar.modules.scan.models import SellerCatalog
+from xianyu_radar.infrastructure.storage.seller_repository import get_pool_seller_detail
 import pytest
+
+
+@pytest.mark.parametrize("status,reason,trusted", [
+    ("ok", "end_marker", True), ("ok", "short_page", True),
+    ("ok", "total_count", True), ("ok", "duplicate_page", False),
+    ("ok", None, False), ("failed", "end_marker", False),
+    ("suspect", "total_count", False),
+])
+def test_catalog_and_candidate_selection_agree_on_scan_quality(tmp_path, status, reason, trusted):
+    conn = init_db(tmp_path / "quality.sqlite3")
+    add_seller(conn, "12345")
+    items = [SellerItem("1", "商品", "10", "")]
+    apply_scan_result(conn, "12345", items, scan_id="scan")
+    conn.execute("UPDATE scans SET status=?,finish_reason=? WHERE id='scan'", (status, reason))
+    conn.commit()
+    detail = get_pool_seller_detail(conn, "12345")
+    assert detail["items"][0]["selectable"] is trusted
+    assert detail["selection_scan_id"] == ("scan" if trusted else None)
+    if trusted:
+        assert select_catalog(conn, "12345", "scan", ["1"])["added"] == 1
+    else:
+        with pytest.raises(ValueError):
+            select_catalog(conn, "12345", "scan", ["1"])
+    conn.close()
 
 
 def test_new_item_sources_keep_each_product_and_scan(tmp_path):

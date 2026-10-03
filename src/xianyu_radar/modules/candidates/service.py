@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from xianyu_radar.models import SellerItem
+from xianyu_radar.infrastructure.catalog_quality import is_trusted_scan
 from xianyu_radar.infrastructure.storage.candidate_repository import add_candidate_source
 
 from xianyu_radar.modules.candidates.repository import (
@@ -31,10 +32,10 @@ def select_catalog(conn: sqlite3.Connection, seller_id: str, scan_id: str, item_
         if not conn.in_transaction:
             conn.execute("BEGIN IMMEDIATE")
         scan = conn.execute(
-            "SELECT id,finish_reason FROM scans WHERE seller_id=? AND status='ok' ORDER BY rowid DESC LIMIT 1",
+            "SELECT id,status,finish_reason FROM scans WHERE seller_id=? AND status='ok' ORDER BY rowid DESC LIMIT 1",
             (seller_id,),
         ).fetchone()
-        if not scan or scan["id"] != scan_id or scan["finish_reason"] not in {"end_marker", "short_page", "total_count"}:
+        if not scan or scan["id"] != scan_id or not is_trusted_scan(scan["status"], scan["finish_reason"]):
             raise ValueError("目录已更新或缺少完整性依据，请刷新并完成扫描后再选择")
         if not conn.execute("SELECT 1 FROM seller_pool_entries WHERE seller_id=? AND active=1", (seller_id,)).fetchone():
             raise ValueError("商家不在商家池")
