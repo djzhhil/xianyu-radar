@@ -34,6 +34,31 @@ def test_init_db_creates_required_tables(tmp_path: Path) -> None:
     conn.close()
 
 
+@pytest.mark.parametrize("missing_columns", [(), ("pooled",), ("pool_entry_id",), ("pooled", "pool_entry_id")])
+def test_v9_discovery_pool_compat_preserves_records(tmp_path, missing_columns):
+    db_path = tmp_path / "v9.sqlite3"
+    conn = init_db(db_path)
+    conn.execute("INSERT INTO discovery_runs(id,keyword,started_at,status) VALUES ('old','FDE','t','ok')")
+    conn.execute(
+        "INSERT INTO discovery_items(run_id,item_id,title,price,url,resolution,pooled,pool_entry_id) "
+        "VALUES ('old','123','item','10','https://www.goofish.com/item?id=123','search',1,42)"
+    )
+    for column in missing_columns:
+        conn.execute(f"ALTER TABLE discovery_items DROP COLUMN {column}")
+    conn.execute("UPDATE meta SET value='9' WHERE key='schema_version'")
+    conn.commit()
+    conn.close()
+
+    for _ in range(2):
+        conn = init_db(db_path)
+        row = conn.execute("SELECT item_id,title,pooled,pool_entry_id FROM discovery_items").fetchone()
+        assert tuple(row) == ("123", "item", 0 if "pooled" in missing_columns else 1,
+                              None if "pool_entry_id" in missing_columns else 42)
+        assert get_schema_version(conn) == SCHEMA_VERSION
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        conn.close()
+
+
 def test_init_db_is_idempotent(tmp_path: Path) -> None:
     db_path = tmp_path / "radar.sqlite3"
     conn1 = init_db(db_path)

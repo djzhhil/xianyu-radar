@@ -59,6 +59,14 @@ def init_db(db_path: Path | None = None, *, check_same_thread: bool = True) -> s
         # Early v4 databases omitted this column; current v4 installs already have it.
         if version == 9 and any(row["name"] == "unparsed_count" for row in conn.execute("PRAGMA table_info(discovery_runs)")):
             migration = ""
+        if version == 10:
+            # Earlier v4 installs lack these fields; newer installs already have them.
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(discovery_items)")}
+            migration = "\n".join(
+                statement for statement in migration.splitlines()
+                if not any(f"ADD COLUMN {column} " in statement
+                           for column in ("pooled", "pool_entry_id") if column in columns)
+            )
         try:
             conn.executescript(
                 "BEGIN IMMEDIATE;\n"
