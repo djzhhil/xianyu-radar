@@ -84,7 +84,7 @@ def test_discovery_validation_stops_requests_and_resumes_detail(tmp_path: Path, 
         detail_calls.append("blocked")
         raise MtopError("x5sec", ret=["FAIL_SYS_USER_VALIDATE"])
 
-    monkeypatch.setattr("xianyu_radar.modules.discovery.service.fetch_detail", blocked)
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.fetch_detail", blocked)
     session = Session("cookie", "token", "test")
     first = discover_sellers(conn, "camera", session=session)
     assert first["status"] == "verification_required"
@@ -94,7 +94,7 @@ def test_discovery_validation_stops_requests_and_resumes_detail(tmp_path: Path, 
     assert conn.execute("SELECT COUNT(*) FROM sellers").fetchone()[0] == 1
 
     monkeypatch.setattr(
-        "xianyu_radar.modules.discovery.service.fetch_detail",
+        "xianyu_radar.modules.discovery.enrichment.fetch_detail",
         lambda *_args: {"data": {"sellerDO": {"sellerId": "202", "nick": "seller"}}},
     )
     resumed = discover_sellers(conn, "camera", session=session, resume_run_id=first["run_id"])
@@ -155,7 +155,7 @@ def test_rate_limit_on_later_search_page_stops_detail_requests(tmp_path: Path, m
         return _search_page(_entry("1", "101"), _entry("2"), next_page=2)
 
     monkeypatch.setattr("xianyu_radar.modules.discovery.keyword_search.call_mtop", search_response)
-    monkeypatch.setattr("xianyu_radar.modules.discovery.service.fetch_detail",
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.fetch_detail",
                         lambda *_args: (_ for _ in ()).throw(AssertionError("detail called after rate limit")))
     result = discover_sellers(conn, "camera", session=Session("cookie", "token", "test"))
     assert result["status"] == "rate_limit"

@@ -81,7 +81,7 @@ src/xianyu_radar/
 | 目录 | 文件与职责 |
 | --- | --- |
 | `auth/` | `service.py`：登录态查看、保存、检查 MTOP 连通性、清除认证暂停。 |
-| `discovery/` | `service.py`：发现流程入口；`pagination.py`：下一页判断；`diagnostics.py`：异常分类和脱敏诊断；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。其余发现职责按分类继续拆分。 |
+| `discovery/` | `service.py`：发现流程入口；`pagination.py`：下一页判断；`diagnostics.py`：异常分类和脱敏诊断；`enrichment.py`：详情请求、商家补全、延时与重试；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。数据存取职责继续拆分。 |
 | `pool/` | `service.py`：商家列表与状态修改的业务入口。实际商家表读写由共用的 `infrastructure/storage/seller_repository.py` 完成。 |
 | `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照、查扫描记录；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
 | `candidates/` | `service.py`：候选列表与状态修改入口；`repository.py`：候选表查询、状态更新。 |

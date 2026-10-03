@@ -1,12 +1,16 @@
 """Focused coverage for discovery's internal components."""
 
 import json
+from contextlib import nullcontext
 
 import pytest
 
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
 from xianyu_radar.infrastructure.goofish.session import AuthError
+from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.infrastructure.storage.db import init_db
 from xianyu_radar.modules.discovery.diagnostics import detail_diagnostic, error_kind_for
+from xianyu_radar.modules.discovery.enrichment import enrich_pending
 
 from xianyu_radar.modules.discovery.pagination import following_page
 
@@ -59,3 +63,32 @@ def test_detail_diagnostic_keeps_field_names_not_values():
     assert json.loads(detail_diagnostic({"data": []}, None)) == {
         "source": "unresolved", "detail_fields": [],
     }
+
+
+@pytest.mark.parametrize("retry_succeeds", [True, False])
+def test_enrichment_retries_and_obeys_item_limit(tmp_path, monkeypatch, retry_succeeds):
+    conn = init_db(tmp_path / "enrichment.sqlite3")
+    conn.execute("INSERT INTO discovery_runs(id, keyword, started_at, status) VALUES ('run', 'test', 't', 'running')")
+    conn.executemany(
+        "INSERT INTO discovery_items(run_id, item_id, title, price, url, resolution) "
+        "VALUES ('run', ?, '', '', '', 'pending')", [("1",), ("2",)],
+    )
+    conn.commit()
+    calls = []
+
+    def detail(_session, item_id, _client):
+        calls.append(item_id)
+        if len(calls) == 1 or not retry_succeeds:
+            raise MtopError("timeout", ret=[])
+        return {"data": {"sellerDO": {"sellerId": "123", "nick": "seller"}}}
+
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.fetch_detail", detail)
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.make_mtop_client", lambda: nullcontext(None))
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.time.sleep", lambda _: None)
+    result = enrich_pending(conn, "run", session=Session("cookie", "token", "test"), max_enrich=1)
+    assert result == (None, None)
+    assert calls == ["1", "1"]
+    rows = conn.execute("SELECT seller_id, resolution, error_kind FROM discovery_items ORDER BY item_id").fetchall()
+    assert tuple(rows[0]) == (("123", "detail", None) if retry_succeeds else (None, "detail_error", "network"))
+    assert rows[1]["resolution"] == "pending"
+    conn.close()

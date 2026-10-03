@@ -352,7 +352,7 @@ def test_detail_validation_failure_is_visible_and_does_not_create_sellers(
     def blocked_detail(*args):
         raise MtopError("x5sec / USER_VALIDATE required", ret=["FAIL_SYS_USER_VALIDATE"])
 
-    monkeypatch.setattr("xianyu_radar.modules.discovery.service.fetch_detail", blocked_detail)
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.fetch_detail", blocked_detail)
     with pytest.raises(HTTPException) as error:
         discover.discover(discover.DiscoverBody(keyword="Sony A7M4"), conn)
 

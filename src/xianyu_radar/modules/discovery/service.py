@@ -4,20 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-import random
 import sqlite3
-import time
 import uuid
 from datetime import datetime, timezone
 
-from xianyu_radar.infrastructure.goofish.mtop import call_mtop, make_mtop_client
 from xianyu_radar.infrastructure.goofish.session import Session
 from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery, upsert_seed_item
 from xianyu_radar.models import SeedItem
-from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
 from xianyu_radar.modules.discovery.keyword_search import search
 from xianyu_radar.modules.discovery.pagination import following_page
-from xianyu_radar.modules.discovery.diagnostics import detail_diagnostic, error_kind_for, search_diagnostic
+from xianyu_radar.modules.discovery.diagnostics import error_kind_for, search_diagnostic
+from xianyu_radar.modules.discovery.enrichment import enrich_pending
 
 
 def _now() -> str:
@@ -34,14 +31,6 @@ def list_discovery_runs(conn: sqlite3.Connection, *, limit: int = 20, offset: in
         (limit, offset),
     ).fetchall()
     return {"total": total, "runs": [dict(row) for row in rows], "limit": limit, "offset": offset}
-
-
-def fetch_detail(session: Session, item_id: str, client=None) -> dict:
-    return call_mtop(
-        session, "taobao.idle.pc.detail",
-        {"id": str(item_id), "returnItemDO": True, "needSellerDO": True},
-        {"spm_cnt": "a21ybx.item.0.0"}, client=client,
-    )
 
 
 def _revoke_discovery_item(conn: sqlite3.Connection, row: sqlite3.Row, reason: str) -> None:
@@ -258,55 +247,11 @@ def discover_sellers(
     if page and page > max_pages and error_kind is None:
         error_kind = "page_limit"
 
-    # A platform block stops further requests; identified sellers remain usable.
-    if error_kind not in {"rate_limit", "verification_required", "auth"} and enrich:
-        pending = conn.execute(
-            "SELECT item_id FROM discovery_items WHERE run_id=? AND seller_id IS NULL "
-            "AND (error_kind IS NULL OR error_kind IN ('ambiguous_image', 'conflicting_seller')) "
-            "ORDER BY rowid LIMIT ?", (run_id, max_enrich),
-        ).fetchall()
-        if pending:
-            with make_mtop_client() as client:
-                for index, row in enumerate(pending):
-                    if index:
-                        time.sleep(0.4 + random.uniform(0, 0.4))
-                    item_id = row["item_id"]
-                    for attempt in range(2):
-                        try:
-                            detail = fetch_detail(session, item_id, client)
-                            seller_id = extract_seller_id(detail)
-                            seller_nick = extract_seller_nick(detail)
-                            conn.execute(
-                                "UPDATE discovery_items SET seller_id=?, "
-                                "seller_nick=COALESCE(?, seller_nick), resolution=?, "
-                                "error_kind=?, diagnostic=? WHERE run_id=? AND item_id=?",
-                                (seller_id, seller_nick, "detail" if seller_id else "unresolved",
-                                 None if seller_id else "seller_id_missing",
-                                 detail_diagnostic(detail, seller_id),
-                                 run_id, item_id),
-                            )
-                            conn.commit()
-                            break
-                        except Exception as exc:
-                            kind = error_kind_for(exc)
-                            if kind in {"rate_limit", "verification_required", "auth"}:
-                                error_kind, caught = kind, exc
-                                conn.execute(
-                                    "UPDATE discovery_items SET resolution='blocked', error_kind=? "
-                                    "WHERE run_id=? AND item_id=?", (kind, run_id, item_id),
-                                )
-                                conn.commit()
-                                break
-                            if attempt == 0:
-                                time.sleep(1.0 + random.uniform(0, 0.5))
-                            else:
-                                conn.execute(
-                                    "UPDATE discovery_items SET resolution='detail_error', error_kind=? "
-                                    "WHERE run_id=? AND item_id=?", (kind, run_id, item_id),
-                                )
-                                conn.commit()
-                    if error_kind in {"rate_limit", "verification_required", "auth"}:
-                        break
+    if enrich:
+        error_kind, caught = enrich_pending(
+            conn, run_id, session=session, max_enrich=max_enrich,
+            error_kind=error_kind, caught=caught,
+        )
     if error_kind in {"rate_limit", "verification_required", "auth"}:
         conn.execute(
             "UPDATE discovery_items SET resolution='blocked', error_kind=? "

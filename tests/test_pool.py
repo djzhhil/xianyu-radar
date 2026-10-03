@@ -77,7 +77,7 @@ def test_image_seller_id_enters_pool_without_shop_request(
     assert [item.seller_id for item in items] == ["2215811796357", "2215811796357"]
     monkeypatch.setattr("xianyu_radar.modules.discovery.service.search", lambda *args: items)
     monkeypatch.setattr(
-        "xianyu_radar.modules.discovery.service.fetch_detail",
+        "xianyu_radar.modules.discovery.enrichment.fetch_detail",
         lambda *args: pytest.fail("parsed sellers do not need item detail"),
     )
     summary = discover_sellers(
@@ -171,7 +171,7 @@ def test_detail_validation_keeps_image_derived_sellers(
     def blocked_detail(*args):
         raise MtopError("x5sec / USER_VALIDATE required", ret=["FAIL_SYS_USER_VALIDATE"])
 
-    monkeypatch.setattr("xianyu_radar.modules.discovery.service.fetch_detail", blocked_detail)
+    monkeypatch.setattr("xianyu_radar.modules.discovery.enrichment.fetch_detail", blocked_detail)
     summary = discover_sellers(
         conn,
         "Sony A7M4",
