@@ -63,7 +63,7 @@ Helper 会话客户端只连接配置的 Helper 地址，调用现有 `POST /api
 
 ```json
 {
-  "credential_version": "v1:opaque-state-fingerprint",
+  "credential_version": "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "responses": [
     {
       "response_url": "https://h5api.m.goofish.com/h5/example/1.0/",

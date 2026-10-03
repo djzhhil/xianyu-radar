@@ -33,12 +33,12 @@ def cookie(name="_m_h5_tk", value="old_123", **kwargs):
 
 
 def snapshot(**kwargs):
-    return {"account_id": "account-1", "credential_version": "v1:opaque", "snapshot_complete": True,
+    return {"account_id": "account-1", "credential_version": "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "snapshot_complete": True,
             "cookies": [cookie(), cookie("session", "synthetic-session", httpOnly=True)], **kwargs}
 
 
 def updated(**kwargs):
-    return {"account_id": "account-1", "credential_version": "v1:next", "changed": True,
+    return {"account_id": "account-1", "credential_version": "v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "changed": True,
             "runtime_sync_status": "synced", **kwargs}
 
 
@@ -61,7 +61,7 @@ def helper(handler):
 
 def session(submit=None, cookies=None):
     return Session(source="Helper", jar=CookieJar(cookies or snapshot()["cookies"]),
-                   credential_version="v1:opaque", account_id="account-1",
+                   credential_version="v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", account_id="account-1",
                    submit_updates=submit or (lambda batches: updated()))
 
 
@@ -75,14 +75,14 @@ def test_contract_paths_fields_and_version():
         assert req.url.path == "/api/v1/integrations/accounts/account-1/cookie-updates"
         payload = json.loads(req.content)
         assert set(payload) == {"credential_version", "responses"}
-        assert payload["credential_version"] == "v1:opaque"
+        assert payload["credential_version"] == "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         assert set(payload["responses"][0]) == {"response_url", "received_at", "set_cookies"}
         return httpx.Response(200, json=updated())
     client = helper(handler)
     try:
         jar, version = client.snapshot()
         assert jar.token(PAGE) == "old"
-        assert client.updates(version, [batch()])["credential_version"] == "v1:next"
+        assert client.updates(version, [batch()])["credential_version"] == "v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         assert len(seen) == 2
     finally:
         client.close()
@@ -92,7 +92,7 @@ def test_contract_paths_fields_and_version():
 
 @pytest.mark.parametrize("change", [
     {"snapshot_complete": False}, {"cookies": []}, {"cookies": "flat"},
-    {"account_id": "different"}, {"credential_version": ""},
+    {"account_id": "different"}, {"credential_version": ""}, {"credential_version": "v1:invalid"},
     {"cookies": [{"name": "a", "value": "fixture"}]},
     {"cookies": [cookie(httpOnly="false")]}, {"cookies": [cookie(expires=True)]},
     {"cookies": [cookie(value="fixture\r\nInjected: header")]},
@@ -159,18 +159,18 @@ def test_updates_never_replay_ambiguous_or_conflicting_commit(failure, kind):
         return httpx.Response(failure, json={"error": "synthetic-secret"})
     client = helper(handler)
     with pytest.raises(HelperError) as error:
-        client.updates("v1:opaque", [batch()])
+        client.updates("v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [batch()])
     assert error.value.kind == kind and count == 1
     assert "synthetic-secret" not in str(error.value)
     client.close()
 
 
-@pytest.mark.parametrize("change", [{"runtime_sync_status": "invalid"}, {"credential_version": ""},
+@pytest.mark.parametrize("change", [{"runtime_sync_status": "invalid"}, {"credential_version": ""}, {"credential_version": "v1:invalid"},
                                      {"changed": "true"}, {"account_id": "other"}])
 def test_invalid_update_success_is_unknown(change):
     client = helper(lambda req: httpx.Response(200, json=updated(**change)))
     with pytest.raises(HelperError) as error:
-        client.updates("v1:opaque", [batch()])
+        client.updates("v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [batch()])
     assert error.value.kind == "cookie_update_unknown"
     client.close()
 
@@ -187,7 +187,7 @@ def test_update_limits_stop_without_network(case):
         batches[0]["received_at"] = (datetime.now(timezone.utc) + timedelta(seconds=60 if case == "future" else -660)).isoformat()
     if case == "host": batches[0]["response_url"] = "https://external.test/"
     with pytest.raises(HelperError) as error:
-        client.updates("v1:opaque", batches)
+        client.updates("v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", batches)
     assert error.value.kind == "cookie_update_limit"
     client.close()
 
@@ -267,7 +267,7 @@ def test_mtop_rotated_token_committed_before_single_retry():
             return httpx.Response(200, headers=[("set-cookie", "_m_h5_tk=new_2; Domain=.goofish.com; Path=/; Secure"),
                 ("set-cookie", "_m_h5_tk_enc=enc; Domain=.goofish.com; Path=/; Secure; Expires=Wed, 01 Jan 2031 00:00:00 GMT")],
                 json={"ret": ["FAIL_SYS_TOKEN_EXOIRED::令牌过期"], "data": {}})
-        assert s.credential_version == "v1:next"
+        assert s.credential_version == "v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         assert "_m_h5_tk=new_2" in req.headers["cookie"]
         return httpx.Response(200, json={"ret": ["SUCCESS::ok"], "data": {}})
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
@@ -374,7 +374,7 @@ def test_noop_or_sync_failure_adopts_version_without_resubmission(sync):
     s = session(lambda batches: (commits.append(batches.copy()), updated(changed=False, runtime_sync_status=sync))[1])
     with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"ret":["SUCCESS"]}, headers={"set-cookie":"a=fixture; Path=/"}))) as client:
         call_mtop(s, "example", {}, client=client)
-    assert len(commits) == 1 and s.credential_version == "v1:next"
+    assert len(commits) == 1 and s.credential_version == "v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 
 def test_update_conflict_invalidates_session_before_retry():
@@ -424,7 +424,7 @@ def test_operation_cleanup_and_status_secret_isolation(configured_provider):
     assert state["runtime_sync_status"] == "failed"
     assert state["source"] == "Helper" and state["last_fetch_at"] and state["last_submit_at"]
     serialized = json.dumps(state)
-    for secret in (CONFIG.password, "old_123", "synthetic-admin", "v1:opaque"):
+    for secret in (CONFIG.password, "old_123", "synthetic-admin", "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"):
         assert secret not in serialized
 
 
@@ -472,7 +472,7 @@ def test_loop_refetches_each_round_and_releases_before_sleep(configured_provider
 def test_update_snapshot_unavailable_uses_helper_error_code():
     client = helper(lambda req: httpx.Response(409, json={"code":"cookie_snapshot_unavailable", "message":"synthetic-secret"}))
     with pytest.raises(HelperError) as error:
-        client.updates("v1:opaque", [batch()])
+        client.updates("v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [batch()])
     assert error.value.kind == "cookie_snapshot_unavailable"
     assert "synthetic-secret" not in str(error.value)
     client.close()
@@ -509,7 +509,7 @@ def test_post_401_reauth_does_not_change_version_or_updates():
         payloads.append(json.loads(req.content))
         return httpx.Response(401) if len(payloads) == 1 else httpx.Response(200, json=updated())
     client = HelperClient(CONFIG, transport=httpx.MockTransport(transport))
-    client.updates("v1:opaque", [batch()])
+    client.updates("v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", [batch()])
     assert len(payloads) == 2 and payloads[0] == payloads[1]
     assert sum(p.endswith("/login") for p in calls) == 2
     client.close()
@@ -558,3 +558,46 @@ def test_epoch_expires_deletes_cookie():
     jar = CookieJar([cookie("a", "fixture")])
     jar.apply(MTOP, ["a=; Domain=.goofish.com; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT"], NOW)
     assert not jar.cookies
+
+
+@pytest.mark.parametrize("case", ["version", "empty", "crlf", "query", "fragment", "bare_query", "host_case", "offset", "seconds", "microseconds", "invalid_date", "reverse", "missing", "unknown"])
+def test_actual_helper_contract_rejects_updates_before_network(case):
+    client = helper(lambda req: pytest.fail("invalid update must not reach network"))
+    version = snapshot()["credential_version"]
+    batches = [batch()]
+    entry = batches[0]
+    if case == "version": version = "v1:invalid"
+    if case == "empty": entry["set_cookies"] = [""]
+    if case == "crlf": entry["set_cookies"] = ["a=b\r\nInjected: value"]
+    if case == "query": entry["response_url"] += "?sign=synthetic"
+    if case == "bare_query": entry["response_url"] += "?"
+    if case == "fragment": entry["response_url"] += "#secret"
+    if case == "host_case": entry["response_url"] = MTOP.replace("h5api", "H5API")
+    if case == "offset": entry["received_at"] = entry["received_at"].replace("Z", "+00:00")
+    if case == "seconds": entry["received_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if case == "microseconds": entry["received_at"] = entry["received_at"].replace("Z", "000Z")
+    if case == "invalid_date": entry["received_at"] = "2026-99-03T00:00:00.000Z"
+    if case == "reverse":
+        older = batch()
+        older["received_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        batches.append(older)
+    if case == "missing": del entry["received_at"]
+    if case == "unknown": entry["unexpected"] = "value"
+    try:
+        with pytest.raises(HelperError) as error:
+            client.updates(version, batches)
+        assert error.value.kind == "cookie_update_limit"
+    finally:
+        client.close()
+
+
+def test_actual_helper_contract_accepts_equal_times_default_port_and_utf8_limit():
+    batches = [batch(), batch()]
+    batches[1]["received_at"] = batches[0]["received_at"]
+    batches[0]["response_url"] = MTOP.replace(".com/", ".com:443/")
+    batches[0]["set_cookies"] = ["a=" + "中" * 2730]  # exactly 8192 UTF-8 bytes
+    client = helper(lambda req: httpx.Response(200, json=updated()))
+    try:
+        assert client.updates(snapshot()["credential_version"], batches)["changed"] is True
+    finally:
+        client.close()

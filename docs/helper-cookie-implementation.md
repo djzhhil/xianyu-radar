@@ -1,6 +1,6 @@
 # Helper Cookie 接入验收记录
 
-日期：2026-10-03。Reader 实施分支：`codex/helper-cookie-consumption`。实施起点为 Reader `694a8db`；重新核对的 Helper production 为 `9c2f4a8`，其交换接口尚未注册，契约依据仍为配套文档。
+日期：2026-10-03。Reader 实施分支：`codex/helper-cookie-consumption`。实施起点为 Reader `694a8db`；重新核对的 Helper production 为 `9c2f4a8`，当时其交换接口尚未注册，契约依据为配套文档。后续对 Helper `bb404bc` 实现的核对及发布检查见 [发布检查记录](helper-cookie-release-check.md)。
 
 ## 交付行为
 

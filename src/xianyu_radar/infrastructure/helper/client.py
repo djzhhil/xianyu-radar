@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import quote, urlsplit
@@ -12,6 +13,14 @@ import httpx
 
 from xianyu_radar.infrastructure.goofish.cookie_jar import CookieJar, allowed_url
 from xianyu_radar.infrastructure.goofish.errors import HelperError
+
+
+_VERSION = re.compile(r"v1:[a-f0-9]{64}")
+_RECEIVED_AT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z")
+
+
+def _valid_version(value: object) -> bool:
+    return isinstance(value, str) and _VERSION.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -123,7 +132,7 @@ class HelperClient:
     def snapshot(self) -> tuple[CookieJar, str]:
         data = self._request("GET", self._path("cookie-snapshot"))
         if (data.get("account_id") != self.config.account_id or data.get("snapshot_complete") is not True
-                or not isinstance(data.get("credential_version"), str) or not data["credential_version"]
+                or not _valid_version(data.get("credential_version"))
                 or not isinstance(data.get("cookies"), list) or not data["cookies"]):
             raise HelperError("helper_contract", "Helper 未返回有效完整快照；请在 Helper 检查账号。")
         try:
@@ -136,24 +145,44 @@ class HelperClient:
         payload = validate_updates(version, batches)
         data = self._request("POST", self._path("cookie-updates"), payload=payload)
         if (data.get("account_id") != self.config.account_id or not isinstance(data.get("changed"), bool)
-                or not isinstance(data.get("credential_version"), str) or not data["credential_version"]
+                or not _valid_version(data.get("credential_version"))
                 or data.get("runtime_sync_status") not in {"synced", "not_running", "not_needed", "failed"}):
             raise HelperError("cookie_update_unknown", "Cookie 回写响应无效，结果未知；当前操作停止。")
         return data
 
 
 def validate_updates(version: str, batches: list[dict]) -> dict:
-    if not 1 <= len(batches) <= 32:
-        raise HelperError("cookie_update_limit", "Cookie 更新批次数超出 Helper 契约限制。")
-    now = datetime.now(timezone.utc)
-    for batch in batches:
-        headers = batch["set_cookies"]
-        received = datetime.fromisoformat(batch["received_at"].replace("Z", "+00:00"))
-        age = (now - received).total_seconds()
-        if (not allowed_url(batch["response_url"]) or not 1 <= len(headers) <= 128
-                or any(len(h.encode()) > 8192 for h in headers) or not -30 <= age <= 600):
-            raise HelperError("cookie_update_limit", "Cookie 更新来源、体积或时间超出 Helper 契约限制。")
-    payload = {"credential_version": version, "responses": batches}
-    if len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()) > 256 * 1024:
-        raise HelperError("cookie_update_limit", "Cookie 更新体积超出 Helper 契约限制。")
+    """Reject input the Helper exchange handler cannot accept, before sending."""
+    try:
+        if not _valid_version(version) or not isinstance(batches, list) or not 1 <= len(batches) <= 32:
+            raise ValueError
+        now = datetime.now(timezone.utc)
+        previous = None
+        for batch in batches:
+            if set(batch) != {"response_url", "received_at", "set_cookies"}:
+                raise ValueError
+            headers = batch["set_cookies"]
+            stamp = batch["received_at"]
+            url = batch["response_url"]
+            target = urlsplit(url)
+            if (not allowed_url(url) or "?" in url or "#" in url
+                    or target.netloc not in {
+                        host + port for host in ("h5api.m.goofish.com", "www.goofish.com",
+                                                 "passport.goofish.com", "seller.goofish.com")
+                        for port in ("", ":443")
+                    }
+                    or not isinstance(stamp, str) or not _RECEIVED_AT.fullmatch(stamp)
+                    or not isinstance(headers, list) or not 1 <= len(headers) <= 128
+                    or any(not isinstance(h, str) or not 1 <= len(h.encode()) <= 8192
+                           or "\r" in h or "\n" in h for h in headers)):
+                raise ValueError
+            received = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            if not -30 <= (now - received).total_seconds() <= 600 or (previous is not None and received < previous):
+                raise ValueError
+            previous = received
+        payload = {"credential_version": version, "responses": batches}
+        if len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()) > 256 * 1024:
+            raise ValueError
+    except (ValueError, TypeError, KeyError, UnicodeError):
+        raise HelperError("cookie_update_limit", "Cookie 更新格式、来源、体积或时间超出 Helper 契约限制。") from None
     return payload

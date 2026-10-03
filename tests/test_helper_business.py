@@ -27,11 +27,11 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def online(submit):
     return Session(source="Helper", jar=CookieJar([
         {"name":"_m_h5_tk","value":"synthetic_1","domain":".goofish.com","path":"/","secure":True},
-    ]), credential_version="v1:fixture", account_id="fixture", submit_updates=submit)
+    ]), credential_version="v1:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", account_id="fixture", submit_updates=submit)
 
 
 def success(batches):
-    return {"credential_version":"v1:next", "runtime_sync_status":"not_needed", "changed":False}
+    return {"credential_version":"v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "runtime_sync_status":"not_needed", "changed":False}
 
 
 @pytest.mark.parametrize("kind", ["credential_conflict", "cookie_update_unknown"])
