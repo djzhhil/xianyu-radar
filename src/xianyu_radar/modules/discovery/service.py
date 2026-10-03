@@ -5,19 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import re
 import sqlite3
 import time
 import uuid
 from datetime import datetime, timezone
 
-from xianyu_radar.infrastructure.goofish.mtop import MtopError, call_mtop, make_mtop_client
-from xianyu_radar.infrastructure.goofish.session import AuthError, Session
+from xianyu_radar.infrastructure.goofish.mtop import call_mtop, make_mtop_client
+from xianyu_radar.infrastructure.goofish.session import Session
 from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery, upsert_seed_item
 from xianyu_radar.models import SeedItem
 from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
 from xianyu_radar.modules.discovery.keyword_search import search
 from xianyu_radar.modules.discovery.pagination import following_page
+from xianyu_radar.modules.discovery.diagnostics import detail_diagnostic, error_kind_for, search_diagnostic
 
 
 def _now() -> str:
@@ -36,59 +36,12 @@ def list_discovery_runs(conn: sqlite3.Connection, *, limit: int = 20, offset: in
     return {"total": total, "runs": [dict(row) for row in rows], "limit": limit, "offset": offset}
 
 
-def _error_kind(exc: Exception) -> str:
-    if isinstance(exc, AuthError):
-        return "auth"
-    if isinstance(exc, MtopError):
-        blob = f"{exc} {exc.ret}".lower()
-        if "fail_sys_user_validate" in blob or "x5sec" in blob:
-            return "verification_required"
-        if "rgv587" in blob or "挤爆" in blob or "稍后重试" in blob:
-            return "rate_limit"
-        return "network"
-    return "parse_failed"
-
-
 def fetch_detail(session: Session, item_id: str, client=None) -> dict:
     return call_mtop(
         session, "taobao.idle.pc.detail",
         {"id": str(item_id), "returnItemDO": True, "needSellerDO": True},
         {"spm_cnt": "a21ybx.item.0.0"}, client=client,
     )
-
-
-def _seller_fields(source: dict) -> list[str]:
-    return sorted(str(key) for key in source
-                  if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(key))
-                  and ("seller" in str(key).lower() or str(key).lower() in {"userid", "user_id"}))
-
-
-def _as_dict(value: object) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
-def _search_diagnostic(item: SeedItem, run_id: str) -> str:
-    entry = _as_dict(item.raw)
-    main = _as_dict(_as_dict(_as_dict(entry.get("data")).get("item")).get("main"))
-    ex = _as_dict(main.get("exContent"))
-    args = _as_dict(_as_dict(main.get("clickParam")).get("args"))
-    jump = _as_dict(_as_dict(_as_dict(ex.get("jump2XianYuHao")).get("clickParam")).get("args"))
-    seller_ref = (args.get("seller_id") or args.get("sellerId") or jump.get("seller_id")
-                  or jump.get("sellerId") or jump.get("userId"))
-    group = f"seller:{seller_ref}" if seller_ref else f"item:{item.item_id}"
-    group_ref = hashlib.sha256(f"{run_id}:{group}".encode()).hexdigest()
-    source = "unresolved"
-    if item.seller_id:
-        for label, fields in (("search_args", args), ("search_jump", jump)):
-            keys = ("sellerId", "seller_id", "userId") if label == "search_jump" else ("sellerId", "seller_id")
-            if any(str(fields.get(key, "")).strip() == item.seller_id for key in keys):
-                source = label
-                break
-        else:
-            source = "image_path"
-    return json.dumps({"source": source, "group_ref": group_ref,
-                       "search_args_fields": _seller_fields(args),
-                       "search_jump_fields": _seller_fields(jump)}, ensure_ascii=False)
 
 
 def _revoke_discovery_item(conn: sqlite3.Connection, row: sqlite3.Row, reason: str) -> None:
@@ -114,7 +67,7 @@ def _save_page(conn: sqlite3.Connection, run_id: str, page: int, found: list[See
                raw_count: int, entries: list | None, signal: object, result_type: str) -> int:
     before = conn.execute("SELECT COUNT(*) FROM discovery_items WHERE run_id=?", (run_id,)).fetchone()[0]
     for item in found:
-        diagnostic = _search_diagnostic(item, run_id)
+        diagnostic = search_diagnostic(item, run_id)
         info = json.loads(diagnostic)
         ambiguous_image = False
         if item.seller_id:
@@ -300,7 +253,7 @@ def discover_sellers(
             conn.commit()
         except Exception as exc:
             conn.rollback()
-            error_kind, caught = _error_kind(exc), exc
+            error_kind, caught = error_kind_for(exc), exc
             break
     if page and page > max_pages and error_kind is None:
         error_kind = "page_limit"
@@ -323,23 +276,19 @@ def discover_sellers(
                             detail = fetch_detail(session, item_id, client)
                             seller_id = extract_seller_id(detail)
                             seller_nick = extract_seller_nick(detail)
-                            fields = sorted(str(key) for key in
-                                            _as_dict(_as_dict(detail.get("data") or detail).get("sellerDO"))
-                                            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(key)))
                             conn.execute(
                                 "UPDATE discovery_items SET seller_id=?, "
                                 "seller_nick=COALESCE(?, seller_nick), resolution=?, "
                                 "error_kind=?, diagnostic=? WHERE run_id=? AND item_id=?",
                                 (seller_id, seller_nick, "detail" if seller_id else "unresolved",
                                  None if seller_id else "seller_id_missing",
-                                 json.dumps({"source": "sellerDO" if seller_id else "unresolved",
-                                             "detail_fields": fields}, ensure_ascii=False),
+                                 detail_diagnostic(detail, seller_id),
                                  run_id, item_id),
                             )
                             conn.commit()
                             break
                         except Exception as exc:
-                            kind = _error_kind(exc)
+                            kind = error_kind_for(exc)
                             if kind in {"rate_limit", "verification_required", "auth"}:
                                 error_kind, caught = kind, exc
                                 conn.execute(
