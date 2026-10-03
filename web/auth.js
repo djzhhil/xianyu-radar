@@ -50,7 +50,7 @@ export function initAuth({ activateTab }) {
     activateTab("auth");
     $("#cookieInput").focus();
   });
-  
+
   $("#btnSaveCookie").addEventListener("click", () => withBusy($("#btnSaveCookie"), "保存中…", async () => {
     try {
       const payload = parseCookieInput($("#cookieInput").value);
