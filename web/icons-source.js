@@ -4,6 +4,7 @@ import { createIcons, Users, ListChecks, ScanLine, Search, Settings, RefreshCw, 
 for (const prefix of ["sellerItems", "events", "candidates"]) {
   for (const [direction, label, icon] of [["Prev", "上一页", "chevron-left"], ["Next", "下一页", "chevron-right"]]) {
     const button = document.getElementById(`${prefix}${direction}`);
+    if (!button) continue;
     button.setAttribute("aria-label", label);
     button.title = label;
     const node = document.createElement("i");

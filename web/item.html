@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>商品详情 · 闲鱼补货工作台</title>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261003-product-detail" />
+</head>
+<body>
+  <header class="top item-top">
+    <div><p class="eyebrow">闲鱼补货工作台</p><h1>商品详情</h1></div>
+    <a id="backToCatalog" href="/#pool">返回商品目录</a>
+  </header>
+  <main class="item-page">
+    <div class="panel-head">
+      <p id="itemIdLabel"></p>
+      <button type="button" class="ghost icon-button" id="refreshDetail" aria-label="刷新商品详情" title="刷新商品详情"><i data-lucide="refresh-cw"></i></button>
+    </div>
+    <p id="detailStatus" role="status" aria-live="polite"></p>
+    <section id="detailContent" hidden>
+      <div class="item-overview">
+        <div class="item-photo" id="itemPhoto" hidden></div>
+        <div class="item-info">
+          <h2 id="itemTitle"></h2>
+          <dl class="item-facts">
+            <div><dt>商品 ID</dt><dd id="detailItemId"></dd></div>
+            <div><dt>商品售价</dt><dd id="itemPrice"></dd></div>
+            <div><dt>发布时间</dt><dd id="itemPublished"></dd></div>
+          </dl>
+          <a id="goofishLink" target="_blank" rel="noopener noreferrer">查看闲鱼商品</a>
+        </div>
+      </div>
+      <h3>商品数据</h3>
+      <dl class="item-metrics">
+        <div><dt>浏览量</dt><dd id="itemViews"></dd></div>
+        <div><dt>想要人数</dt><dd id="itemWants"></dd></div>
+        <div><dt>收藏计数</dt><dd id="itemFavorites"></dd></div>
+        <div><dt>互动数</dt><dd id="itemInteractions"></dd></div>
+        <div><dt>评价计数</dt><dd id="itemEvaluations"></dd></div>
+      </dl>
+      <p class="hint" id="detailFetchedAt"></p>
+    </section>
+  </main>
+  <script src="/assets/icons.js?v=20261003-product-detail"></script>
+  <script src="/assets/item.js?v=20261003-product-detail"></script>
+</body>
+</html>

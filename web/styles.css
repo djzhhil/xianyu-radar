@@ -95,6 +95,19 @@ td code { font-size: 12px; }
 .rule-match { border-top: 1px solid var(--line); padding: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
 .catalog-image { width: 56px; height: 56px; display: grid; place-items: center; background: var(--surface); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; }
 .catalog-image img { width: 100%; height: 100%; object-fit: contain; }
+.item-top { padding-left: 32px; }
+.item-page { max-width: 1100px; margin: 0 auto; }
+.item-overview { display: flex; flex-wrap: wrap; gap: 28px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.item-photo { width: 200px; aspect-ratio: 1; flex: 0 0 200px; background: var(--surface); }
+.item-photo img { width: 100%; height: 100%; object-fit: contain; }
+.item-info { flex: 1 1 250px; min-width: 0; }
+.item-info h2 { font-size: 20px; margin: 0 0 20px; }
+.item-facts { margin: 0 0 18px; }
+.item-facts > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); padding: 7px 0; gap: 12px; }
+.item-facts dt, .item-metrics dt { color: var(--muted); }
+.item-facts dd { margin: 0; overflow-wrap: anywhere; }
+.item-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 20px; padding: 20px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.item-metrics dd { margin: 8px 0 0; font-size: 23px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 .catalog-selection { align-items: center; flex-wrap: wrap; font-size: 12px; }
 .catalog-selection label { display: flex; gap: 6px; align-items: center; }

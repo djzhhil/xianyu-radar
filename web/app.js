@@ -323,7 +323,7 @@ async function openSeller(sellerId, offset = 0, activate = true) {
   }
   const itemsBody = $("#sellerItemsBody");
   itemsBody.replaceChildren();
-  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 8);
+  if (!data.items.length) addEmptyRow(itemsBody, "当前范围暂无商品", 9);
   for (const item of data.items) {
     const row = document.createElement("tr");
     const selectCell = document.createElement("td");
@@ -355,6 +355,12 @@ async function openSeller(sellerId, offset = 0, activate = true) {
     imageCell.appendChild(preview);
     row.appendChild(imageCell);
     [item.title || item.item_id, item.price, itemStatuses[item.status] || item.status, itemSources[item.source] || item.source, formatTime(item.last_seen_at)].forEach((value) => addCell(row, value));
+    const detailCell = document.createElement("td");
+    const detailLink = document.createElement("a");
+    detailLink.href = `/items/${encodeURIComponent(item.item_id)}?seller=${encodeURIComponent(sellerId)}`;
+    detailLink.textContent = "商品详情";
+    detailCell.appendChild(detailLink);
+    row.appendChild(detailCell);
     addLinkCell(row, item.url);
     itemsBody.appendChild(row);
   }
@@ -856,5 +862,9 @@ $("#evtSince").addEventListener("change", () => {
 });
 
 refreshAll()
-  .then(() => activateTab(location.hash.slice(1) || "pool"))
+  .then(async () => {
+    activateTab(location.hash.slice(1) || "pool");
+    const seller = new URLSearchParams(location.search).get("seller");
+    if (seller && /^[0-9]+$/.test(seller) && (!location.hash || location.hash === "#pool")) await openSeller(seller);
+  })
   .catch((error) => toast(error.message));

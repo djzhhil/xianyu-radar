@@ -16,6 +16,7 @@ from xianyu_radar.entrypoints.api.routes import (
     discover,
     events,
     pool,
+    products,
     scan,
     status,
 )
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(discover.router, prefix="/api/discover", tags=["discover"])
     app.include_router(pool.router, prefix="/api/pool", tags=["pool"])
+    app.include_router(products.router, prefix="/api/items", tags=["products"])
     app.include_router(scan.router, prefix="/api/scan", tags=["scan"])
     app.include_router(candidates.router, prefix="/api/candidates", tags=["candidates"])
     app.include_router(events.router, prefix="/api/events", tags=["events"])
@@ -65,6 +67,10 @@ def create_app() -> FastAPI:
         @app.get("/")
         def index() -> FileResponse:
             return FileResponse(WEB_DIR / "index.html")
+
+        @app.get("/items/{item_id}", include_in_schema=False)
+        def item_page(item_id: str) -> FileResponse:
+            return FileResponse(WEB_DIR / "item.html")
 
     return app
 
