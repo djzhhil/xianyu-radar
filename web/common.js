@@ -1,3 +1,5 @@
+export const scanErrors = { incomplete: "分页不完整", count_drop: "商品数骤降，等待复扫" };
+
 export const runStatuses = { running: "进行中", ok: "成功", failed: "失败", suspect: "待复核", partial: "部分完成", parse_failed: "解析失败", rate_limit: "已限流", verification_required: "需要验证", auth: "登录态失效" };
 
 export const pageSize = 20;

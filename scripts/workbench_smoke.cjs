@@ -56,7 +56,7 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
         unsafeLink: tools.safeLink('javascript:alert(1)').textContent,
       };
     });
-    assert.deepEqual(common.exports, ['$', '$$', 'addCell', 'addEmptyRow', 'addLinkCell', 'addOption', 'api', 'formatTime', 'pageSize', 'runStatuses', 'safeLink', 'setLog', 'setResult', 'showPager', 'toast', 'withBusy'].sort());
+    assert.deepEqual(common.exports, ['$', '$$', 'addCell', 'addEmptyRow', 'addLinkCell', 'addOption', 'api', 'formatTime', 'pageSize', 'runStatuses', 'safeLink', 'scanErrors', 'setLog', 'setResult', 'showPager', 'toast', 'withBusy'].sort());
     assert.equal(common.pageSize, 20);
     assert.equal(common.invalidTime, 'not-a-date');
     assert.equal(common.unsafeLink, '—');
