@@ -27,7 +27,6 @@ SCHEMA_VERSION = 11
 
 def ensure_data_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
 

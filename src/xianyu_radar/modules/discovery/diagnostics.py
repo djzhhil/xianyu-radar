@@ -7,20 +7,14 @@ import json
 import re
 
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
+from xianyu_radar.infrastructure.goofish.errors import HelperError, error_kind
 from xianyu_radar.infrastructure.goofish.session import AuthError
 from xianyu_radar.models import SeedItem
 
 
 def error_kind_for(exc: Exception) -> str:
-    if isinstance(exc, AuthError):
-        return "auth"
-    if isinstance(exc, MtopError):
-        blob = f"{exc} {exc.ret}".lower()
-        if "fail_sys_user_validate" in blob or "x5sec" in blob:
-            return "verification_required"
-        if "rgv587" in blob or "挤爆" in blob or "稍后重试" in blob:
-            return "rate_limit"
-        return "network"
+    if isinstance(exc, (AuthError, HelperError, MtopError)):
+        return error_kind(exc)
     return "parse_failed"
 
 

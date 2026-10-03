@@ -9,8 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from xianyu_radar.entrypoints.api.deps import get_db, require_session
-from xianyu_radar.infrastructure.goofish.mtop import MtopError
-from xianyu_radar.infrastructure.goofish.session import AuthError
 from xianyu_radar.modules.discovery.service import discover_sellers, list_discovery_runs
 from xianyu_radar.modules.discovery.service import get_discovery_run as read_discovery_run
 from xianyu_radar.modules.discovery.keyword_search import DiscoveryParseError
@@ -44,51 +42,19 @@ class DiscoverBody(BaseModel):
     resume_run_id: str | None = None
 
 
-def _http_from_mtop(exc: MtopError) -> HTTPException:
-    msg = str(exc)
-    ret = " ".join(str(x) for x in (exc.ret or []))
-    blob = f"{msg} {ret}"
-    if "RGV587" in blob or "挤爆" in blob or "稍后重试" in blob:
-        return HTTPException(
-            status_code=429,
-            detail="闲鱼限流/挤爆（RGV587）。请稍后再试，降低频率，或换账号 Cookie。",
-        )
-    if "FAIL_SYS_USER_VALIDATE" in blob or "x5sec" in blob.lower():
-        return HTTPException(
-            status_code=403,
-            detail="触发滑块/人机验证（x5sec）。请用浏览器打开闲鱼完成验证后重新导出 Cookie。",
-        )
-    if "SESSION" in blob.upper() or "TOKEN" in blob.upper() or "登录" in blob:
-        return HTTPException(status_code=401, detail=f"登录态失效：{msg}")
-    return HTTPException(status_code=502, detail=f"闲鱼接口失败：{msg}")
-
-
 @router.post("")
 def discover(body: DiscoverBody, conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    session = require_session()
-    if session.looks_like_placeholder:
-        raise HTTPException(
-            status_code=400,
-            detail="Cookie 为测试占位符，无法在线发现。请粘贴真实 Cookie。",
-        )
-
     try:
-        summary = discover_sellers(
-            conn,
-            body.keyword.strip(),
-            session=session,
-            enrich=not body.no_enrich,
-            max_pages=body.max_pages,
-            resume_run_id=body.resume_run_id,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except DiscoveryParseError as e:
-        raise HTTPException(status_code=502, detail=f"闲鱼搜索响应无法解析：{e}") from e
-    except AuthError as e:
-        raise HTTPException(status_code=401, detail=str(e)) from e
-    except MtopError as e:
-        raise _http_from_mtop(e) from e
+        with require_session(conn) as session:
+            summary = discover_sellers(
+                conn, body.keyword.strip(), session=session,
+                enrich=not body.no_enrich, max_pages=body.max_pages,
+                resume_run_id=body.resume_run_id,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DiscoveryParseError as exc:
+        raise HTTPException(status_code=502, detail="闲鱼搜索响应无法解析") from exc
 
     items = summary.pop("items", [])
     return {

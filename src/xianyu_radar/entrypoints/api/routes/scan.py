@@ -65,18 +65,10 @@ def scan_one(
     body = body or ScanSellerBody()
     hints = [k.strip() for k in (body.keyword or "").split(",") if k.strip()] or None
 
-    session = require_session()
-    if session.looks_like_placeholder:
-        raise HTTPException(
-            status_code=400,
-            detail="Cookie 为测试占位符，无法真实扫描。请到登录态粘贴 goofish 会话。",
-        )
     if is_auth_paused(conn):
-        raise HTTPException(
-            status_code=409,
-            detail="auth 已暂停。请更新 Cookie 后点「清除 auth 暂停」，或先 auth check。",
-        )
-    result = scan_seller(conn, session, seller_id, keyword_hints=hints)
+        raise HTTPException(status_code=409, detail="在线工作已暂停，请在 Helper 恢复后重新检查。")
+    with require_session(conn) as session:
+        result = scan_seller(conn, session, seller_id, keyword_hints=hints)
 
     events = result.get("events") or []
     return {
@@ -94,21 +86,10 @@ def scan_one(
 
 @router.post("/pool")
 def scan_pool(conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    session = require_session()
-    if session.looks_like_placeholder:
-        raise HTTPException(
-            status_code=400,
-            detail="Cookie 为测试占位符，无法真实扫描商家池。请粘贴真实登录态。",
-        )
     if is_auth_paused(conn):
-        raise HTTPException(
-            status_code=409,
-            detail="auth 已暂停（上次会话失效）。请更新 Cookie 并清除暂停后再扫。",
-        )
-    try:
+        raise HTTPException(status_code=409, detail="在线工作已暂停，请在 Helper 恢复后重新检查。")
+    with require_session(conn) as session:
         results = run_pool_once(conn, session)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"scan pool failed: {e}") from e
     out = []
     for r in results:
         events = r.get("events") or []

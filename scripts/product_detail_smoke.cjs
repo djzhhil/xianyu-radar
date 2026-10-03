@@ -25,7 +25,9 @@ conn=init_db()
 add_manual_seller(conn,"456","示例商家")
 apply_scan_result(conn,"456",[SellerItem("123","商品详情展示测试","12.50","https://www.goofish.com/item?id=123")])
 conn.close()
-products.require_session=lambda: Session("cookie","real-token","test")
+from contextlib import nullcontext
+from xianyu_radar.entrypoints.api import deps
+deps.session_operation=lambda: nullcontext(Session("synthetic","fixture","offline"))
 def response(session,api,data,params):
     assert data["needSellerDO"] is False
     if data["id"]=="124":

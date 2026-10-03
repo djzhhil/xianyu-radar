@@ -1,6 +1,17 @@
-export const scanErrors = { incomplete: "分页不完整", count_drop: "商品数骤降，等待复扫" };
+export const scanErrors = {
+  incomplete: "分页不完整", count_drop: "商品数骤降，等待复扫",
+  auth: "登录态失效", auth_paused: "在线工作已暂停", token: "签名凭证需在 Helper 恢复",
+  verification_required: "需要在 Helper 完成人机验证", rate_limit: "闲鱼限流，请稍后重试",
+  helper_config: "Helper 未配置", helper_auth: "Helper 登录配置有误",
+  helper_permission: "Helper 用户无权访问目标账号", helper_account: "Helper 账号或接口不存在",
+  helper_unavailable: "Helper 不可达", cookie_snapshot_unavailable: "请先在 Helper 登录",
+  helper_contract: "Helper 响应不符合接入要求", credential_conflict: "Helper 凭证已变化，请重新继续操作",
+  cookie_update_unknown: "Cookie 回写结果未知，已停止", cookie_update_rejected: "Helper 拒绝更新，已停止",
+  cookie_update_limit: "Cookie 更新超过接入限制，已停止",
+};
 
-export const runStatuses = { running: "进行中", ok: "成功", failed: "失败", suspect: "待复核", partial: "部分完成", parse_failed: "解析失败", rate_limit: "已限流", verification_required: "需要验证", auth: "登录态失效" };
+export const runStatuses = { running: "进行中", ok: "成功", failed: "失败", suspect: "待复核", partial: "部分完成", parse_failed: "解析失败", ...scanErrors };
+
 
 export const pageSize = 20;
 
@@ -21,7 +32,7 @@ export async function api(path, options = {}) {
   }
   if (!res.ok) {
     const detail = data?.detail || data?.error || res.statusText;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(typeof detail === "string" ? detail : detail?.message || JSON.stringify(detail));
   }
   return data;
 }

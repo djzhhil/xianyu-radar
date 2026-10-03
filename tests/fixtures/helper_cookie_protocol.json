@@ -1,0 +1,48 @@
+{
+  "source": "Helper internal/xianyu/cookierefresh/cookies_test.go: scope, creation order, exact deletion and partition rules",
+  "cases": [
+    {
+      "name": "domain-path-order",
+      "snapshot": [
+        {"name": "root", "value": "1", "domain": ".goofish.com", "path": "/", "secure": true},
+        {"name": "passport", "value": "2", "domain": "passport.goofish.com", "path": "/newlogin", "secure": true},
+        {"name": "other", "value": "3", "domain": "h5api.m.goofish.com", "path": "/", "secure": true},
+        {"name": "expired", "value": "4", "domain": ".goofish.com", "path": "/", "expires": 1}
+      ],
+      "request_url": "https://passport.goofish.com/newlogin/silentHasLogin.do",
+      "expected_header": "passport=2; root=1"
+    },
+    {
+      "name": "equal-path-creation-order",
+      "snapshot": [
+        {"name": "third", "value": "3", "domain": ".goofish.com", "path": "/", "secure": true},
+        {"name": "first", "value": "1", "domain": ".goofish.com", "path": "/", "secure": true},
+        {"name": "second", "value": "2", "domain": ".goofish.com", "path": "/", "secure": true}
+      ],
+      "request_url": "https://www.goofish.com/im",
+      "expected_header": "third=3; first=1; second=2"
+    },
+    {
+      "name": "exact-delete-and-attributes",
+      "snapshot": [
+        {"name": "sid", "value": "root", "domain": ".goofish.com", "path": "/"},
+        {"name": "sid", "value": "login", "domain": ".goofish.com", "path": "/newlogin"}
+      ],
+      "response_url": "https://passport.goofish.com/newlogin/silentHasLogin.do",
+      "set_cookies": [
+        "sid=; Domain=.goofish.com; Path=/newlogin; Max-Age=0",
+        "fresh=ok; Domain=.goofish.com; Path=/; Secure; HttpOnly; SameSite=None"
+      ],
+      "request_url": "https://www.goofish.com/",
+      "expected_header": "sid=root; fresh=ok"
+    },
+    {
+      "name": "partition-preserved",
+      "snapshot": [{"name": "a", "value": "plain", "domain": ".goofish.com", "path": "/"}],
+      "response_url": "https://h5api.m.goofish.com/h5/example/1.0/",
+      "set_cookies": ["a=partition; Domain=goofish.com; Path=/; Secure; Partitioned; SameSite=None"],
+      "request_url": "https://www.goofish.com/im",
+      "expected_header": "a=plain; a=partition"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from xianyu_radar.infrastructure.goofish.mtop import create_sign
-from xianyu_radar.infrastructure.goofish.session import AuthError, load_session
+from xianyu_radar.infrastructure.goofish.session import AuthError, parse_offline_session
 
 
 def test_create_sign_known_vector() -> None:
@@ -25,7 +25,7 @@ def test_load_session_from_cookie_header(tmp_path: Path) -> None:
         json.dumps({"cookie": "a=1; _m_h5_tk=tokensecret_1710000000000; b=2"}),
         encoding="utf-8",
     )
-    session = load_session(path)
+    session = parse_offline_session(json.loads(path.read_text()))
     assert session.token == "tokensecret"
     assert "_m_h5_tk=" in session.cookies
 
@@ -43,11 +43,11 @@ def test_load_session_from_cookie_list(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    session = load_session(path)
+    session = parse_offline_session(json.loads(path.read_text()))
     assert session.token == "hello"
     assert session.cookie_count == 2
 
 
 def test_load_session_missing_file(tmp_path: Path) -> None:
     with pytest.raises(AuthError):
-        load_session(tmp_path / "nope.json")
+        parse_offline_session({})

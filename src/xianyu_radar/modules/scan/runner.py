@@ -8,6 +8,8 @@ import time
 from typing import Callable
 
 from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.infrastructure.goofish.errors import STOP_KINDS, HelperError
+from xianyu_radar.infrastructure.helper.session_provider import session_operation
 from xianyu_radar.infrastructure.storage.auth_state import is_auth_paused
 from xianyu_radar.config import (
     DEFAULT_JITTER_SEC,
@@ -41,28 +43,36 @@ def run_pool_once(
         results.append(result)
         if on_result:
             on_result(result)
-        if result.get("error_kind") == "auth":
+        if result.get("error_kind") in STOP_KINDS or session.stop_kind:
             break
     return results
 
 
 def run_loop(
     conn: sqlite3.Connection,
-    session: Session,
     *,
     interval_sec: float = DEFAULT_SELLER_SCAN_INTERVAL_SEC,
     jitter_sec: float = DEFAULT_JITTER_SEC,
     max_rounds: int | None = None,
     on_result: Callable[[dict], None] | None = None,
-) -> None:
+) -> bool:
     rounds = 0
     while True:
-        run_pool_once(conn, session, on_result=on_result)
+        if is_auth_paused(conn):
+            if on_result:
+                on_result({"status": "skipped", "error_kind": "auth_paused"})
+            return False
+        try:
+            with session_operation() as session:
+                results = run_pool_once(conn, session, on_result=on_result)
+            if session.stop_kind or any(r.get("error_kind") in STOP_KINDS for r in results):
+                return False
+        except HelperError as exc:
+            if on_result:
+                on_result({"status": "failed", "error_kind": exc.kind})
+            return False
         rounds += 1
         if max_rounds is not None and rounds >= max_rounds:
-            break
+            return True
         sleep_for = interval_sec + random.uniform(0, jitter_sec)
-        # simple backoff if auth paused
-        if is_auth_paused(conn):
-            sleep_for = max(sleep_for, interval_sec * 3)
         time.sleep(sleep_for)

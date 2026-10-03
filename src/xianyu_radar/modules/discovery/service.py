@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.infrastructure.goofish.errors import STOP_KINDS
 from xianyu_radar.modules.discovery.keyword_search import search
 from xianyu_radar.modules.discovery.pagination import following_page
 from xianyu_radar.modules.discovery.diagnostics import error_kind_for
@@ -70,7 +71,7 @@ def discover_sellers(
         error_kind = "network"
     if error_kind is None and unresolved:
         error_kind = "unresolved_items"
-    if error_kind in {"rate_limit", "verification_required", "auth"}:
+    if error_kind in STOP_KINDS:
         status = error_kind
     elif error_kind == "network":
         status = "partial" if any(row["seller_id"] for row in rows) else "failed"

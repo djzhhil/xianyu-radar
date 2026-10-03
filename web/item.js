@@ -31,7 +31,7 @@ async function loadDetail() {
     const body = await response.text();
     let data;
     try { data = JSON.parse(body); } catch { throw new Error("商品详情服务返回异常，请稍后重试"); }
-    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "商品详情获取失败");
+    if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.message || "商品详情获取失败");
     text("#itemTitle", data.title || "未知标题");
     document.title = `${data.title || "商品详情"} · 闲鱼补货工作台`;
     text("#detailItemId", data.item_id);

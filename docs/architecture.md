@@ -28,7 +28,7 @@ src/xianyu_radar/
 │   │   └── routes/             按 HTTP 地址分发到业务模块
 │   └── cli.py                  radar 命令入口；与 API 是并列入口
 ├── modules/                     六个业务模块；service.py 是各模块对外的主入口
-│   ├── auth/                    保存、查看和检查登录态
+│   ├── auth/                    查看 Helper 状态和检查登录态
 │   ├── discovery/               搜索商品、发现卖家并入池
 │   ├── pool/                    查看商家池、修改商家状态
 │   ├── scan/                    扫描商家、比较变化、生成事件和候选
@@ -50,7 +50,7 @@ src/xianyu_radar/
 
 | 路由文件 | 用户功能 | 进入的业务模块 |
 | --- | --- | --- |
-| `routes/auth.py` | 登录态状态、保存、检查、解除暂停 | `auth/service.py` |
+| `routes/auth.py` | Helper 状态、检查、验证后解除暂停 | `auth/service.py` |
 | `routes/discover.py` | 按关键词发现商家 | `discovery/service.py` |
 | `routes/pool.py` | 查看商家池、改变商家状态 | `pool/service.py` |
 | `routes/scan.py` | 扫描单个商家或整个商家池 | `scan/service.py`、`scan/runner.py` |
@@ -68,7 +68,7 @@ src/xianyu_radar/
 | 文件 | 职责 |
 | --- | --- |
 | `web/common.js` | DOM 查询、API 请求、提示、按钮忙碌状态、时间格式化、表格、安全链接和分页工具。 |
-| `web/auth.js` | 系统数量、登录态展示、Cookie 校验和保存；通过入口传入的回调切换到登录页。 |
+| `web/auth.js` | 系统数量、Helper 来源展示和重新检查；通过入口传入的回调切换到登录页。 |
 | `web/discovery.js` | 搜索表单、搜索结果、发现历史、诊断及继续任务；打开商家和全局刷新由入口协调。 |
 | `web/pool.js` | 商家列表与状态、档案、目录及图片、存量选品、排除规则；维护当前商家、目录分页和勾选状态。 |
 | `web/candidates.js` | 候选列表、统计、时间/质量/状态筛选、审核状态和来源展开；维护候选分页状态。 |
@@ -80,14 +80,14 @@ src/xianyu_radar/
 
 | 目录 | 文件与职责 |
 | --- | --- |
-| `auth/` | `service.py`：登录态查看、保存、检查 MTOP 连通性、清除认证暂停。 |
+| `auth/` | `service.py`：Helper 状态查看、检查 MTOP 连通性、验证后清除认证暂停。 |
 | `discovery/` | `service.py`：发现流程入口；`pagination.py`：下一页判断；`diagnostics.py`：异常分类和脱敏诊断；`enrichment.py`：详情请求、商家补全、延时与重试；`repository.py`：任务、分页、商品和诊断记录读写、归属冲突处理、商家入池与种子商品保存；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。 |
 | `pool/` | `service.py`：商家列表与状态修改的业务入口。实际商家表读写由共用的 `infrastructure/storage/seller_repository.py` 完成。 |
 | `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照、查扫描记录；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
 | `candidates/` | `service.py`：候选列表与状态修改入口；`repository.py`：候选表查询、状态更新。 |
 | `products/` | `service.py`：调用商品详情接口，仅请求商品数据，提取商品信息和统计；不读写商家、扫描或候选表。 |
 
-`infrastructure/goofish/session.py` 从 Cookie JSON 建立会话；`mtop.py` 计算签名并访问闲鱼接口。`infrastructure/storage/db.py` 连接和初始化 SQLite，`schema.sql` 定义表，`seller_repository.py` 读写商家池相关表，`auth_state.py` 管理认证暂停标志。发现和扫描都需要闲鱼协议；发现、商家池和扫描都需要访问商家数据，所以这些代码放在共用区域。
+`infrastructure/helper/session_provider.py` 按账号串行从 Helper 获取完整快照；`helper/client.py` 管理独立认证和两项交换契约。`goofish/cookie_jar.py` 保留作用域和顺序，`session.py` 只持有操作期间的内存会话；`mtop.py` 动态签名、逐跳接收更新并确认回写。`infrastructure/storage/db.py` 连接和初始化 SQLite，`schema.sql` 定义表，`seller_repository.py` 读写商家池相关表，`auth_state.py` 管理认证暂停标志。发现和扫描都需要闲鱼协议；发现、商家池和扫描都需要访问商家数据，所以这些代码放在共用区域。
 
 ## 第三层：用户进入后会发生什么
 
@@ -128,9 +128,9 @@ flowchart LR
 
 目录是否可选与候选是否可加入，统一使用 `infrastructure/catalog_quality.py` 的 `is_trusted_scan()`。规则为 `status='ok'` 且结束原因是 `end_marker`、`short_page` 或 `total_count`；调用者仍分别检查最新扫描、快照归属和商家成员资格。新增数据库字段必须新增迁移，不通过修改已执行的迁移来升级旧库。
 
-### 1. 保存或检查登录态
+### 1. 查看或检查 Helper 登录态
 
-`web/auth.js` → `routes/auth.py` → `auth/service.py` → `infrastructure/goofish/session.py` 解析 Cookie；需要在线检查时再由 `infrastructure/goofish/mtop.py` 发请求。保存的会话文件在 `data/state/`，认证暂停标志在 SQLite 的 `meta` 表。
+`web/auth.js` → `routes/auth.py` → `auth/service.py` 检查 Helper 状态；在线入口共用 `helper/session_provider.py` 和 `goofish/mtop.py`。临时 Cookie 仅在后端内存，旧 `data/state/` 不再读取。认证暂停标志仍在 SQLite 的 `meta` 表。
 
 ### 2. 发现商家
 

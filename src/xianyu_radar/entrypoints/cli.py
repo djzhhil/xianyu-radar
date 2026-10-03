@@ -9,12 +9,14 @@ from datetime import datetime, timedelta, timezone
 
 from xianyu_radar import __version__
 from xianyu_radar import config as cfg
-from xianyu_radar.infrastructure.goofish.session import AuthError, load_session
+from xianyu_radar.infrastructure.goofish.errors import AuthError, HelperError
+from xianyu_radar.infrastructure.goofish.mtop import MtopError
+from xianyu_radar.infrastructure.helper.session_provider import session_operation
+from xianyu_radar.modules.auth import service as auth_service
 from xianyu_radar.modules.candidates.service import list_candidates
-from xianyu_radar.config import ensure_data_dirs
 from xianyu_radar.modules.discovery.keyword_search import search
 from xianyu_radar.modules.discovery.service import discover_sellers
-from xianyu_radar.infrastructure.storage.auth_state import clear_auth_paused, is_auth_paused
+from xianyu_radar.infrastructure.storage.auth_state import is_auth_paused
 from xianyu_radar.modules.scan.runner import run_loop, run_pool_once
 from xianyu_radar.modules.scan.fetcher import get_seller_items
 from xianyu_radar.modules.scan.service import scan_seller
@@ -38,59 +40,21 @@ def cmd_init_db(_: argparse.Namespace) -> int:
 
 
 def cmd_auth_check(args: argparse.Namespace) -> int:
-    ensure_data_dirs()
+    conn = _conn()
     try:
-        session = load_session(args.state)
-    except AuthError as e:
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    print(f"AUTH_OK source={session.source}")
-    print(f"cookie_count={session.cookie_count}")
-    print(f"token_prefix={session.token[:8]}...")
-    # optional live ping
-    if args.ping:
-        from xianyu_radar.infrastructure.goofish.mtop import call_mtop
-
-        try:
-            # lightweight: empty-ish search page 1 with tiny rows — still a real call
-            call_mtop(
-                session,
-                "taobao.idlemtopsearch.pc.search",
-                {
-                    "pageNumber": 1,
-                    "keyword": "test",
-                    "fromFilter": False,
-                    "rowsPerPage": 1,
-                    "sortValue": "",
-                    "sortField": "",
-                    "customDistance": "",
-                    "gps": "",
-                    "propValueStr": {},
-                    "customGps": "",
-                    "searchReqFromPage": "pcSearch",
-                    "extraFilterValue": "{}",
-                    "userPositionJson": "{}",
-                },
-                {"spm_cnt": "a21ybx.search.0.0"},
-            )
-            print("PING_OK")
-        except Exception as e:
-            print(f"PING_FAIL: {e}")
-            return 2
-    return 0
+        with session_operation() as session:
+            result = auth_service.check_session(conn, session, ping=args.ping)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    finally:
+        conn.close()
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    try:
-        session = load_session(args.state)
-    except AuthError as e:
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    items = search(args.keyword, session)
+    with session_operation() as session:
+        items = search(args.keyword, session)
     for it in items:
-        print(
-            f"{it.item_id}\t{it.price}\t{it.seller_id or '-'}\t{it.title[:60]}"
-        )
+        print(f"{it.item_id}\t{it.price}\t{it.seller_id or '-'}\t{it.title[:60]}")
     print(f"count={len(items)}")
     return 0
 
@@ -98,28 +62,15 @@ def cmd_search(args: argparse.Namespace) -> int:
 def cmd_discover(args: argparse.Namespace) -> int:
     conn = _conn()
     try:
-        session = load_session(args.state)
-    except AuthError as e:
+        with session_operation() as session:
+            summary = discover_sellers(
+                conn, args.keyword, session=session, enrich=not args.no_enrich,
+                max_pages=args.max_pages, resume_run_id=args.resume_run_id,
+            )
+        print(json.dumps({k: v for k, v in summary.items() if k != "items"}, ensure_ascii=False, indent=2))
+        return 0 if summary["status"] == "ok" else 1
+    finally:
         conn.close()
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    summary = discover_sellers(
-        conn,
-        args.keyword,
-        session=session,
-        enrich=not args.no_enrich,
-        max_pages=args.max_pages,
-        resume_run_id=args.resume_run_id,
-    )
-    conn.close()
-    print(
-        json.dumps(
-            {k: v for k, v in summary.items() if k != "items"},
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-    return 0
 
 
 def cmd_pool_list(args: argparse.Namespace) -> int:
@@ -159,12 +110,8 @@ def cmd_pool_add(args: argparse.Namespace) -> int:
 
 
 def cmd_fetch_seller(args: argparse.Namespace) -> int:
-    try:
-        session = load_session(args.state)
-    except AuthError as e:
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    catalog = get_seller_items(session, args.seller_id)
+    with session_operation() as session:
+        catalog = get_seller_items(session, args.seller_id)
     items = catalog.items
     if not catalog.complete:
         print(f"INCOMPLETE: {catalog.finish_reason} pages={catalog.page_count} ", file=sys.stderr)
@@ -187,42 +134,33 @@ def cmd_fetch_seller(args: argparse.Namespace) -> int:
 def cmd_scan_seller(args: argparse.Namespace) -> int:
     conn = _conn()
     try:
-        session = load_session(args.state)
-    except AuthError as e:
+        if is_auth_paused(conn):
+            print("在线工作已暂停，请在 Helper 恢复后运行 radar auth check --ping")
+            return 1
+        hints = [k.strip() for k in (args.keyword or "").split(",") if k.strip()] or None
+        with session_operation() as session:
+            result = scan_seller(conn, session, args.seller_id, keyword_hints=hints)
+        print(f"scan_id={result.get('scan_id')} status={result.get('status')} error_kind={result.get('error_kind')}")
+        print(f"events={len(result.get('events') or [])} items={result.get('item_count', 0)}")
+        return 0 if result.get("status") == "ok" else 1
+    finally:
         conn.close()
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    hints = [k.strip() for k in (args.keyword or "").split(",") if k.strip()] or None
-    result = scan_seller(conn, session, args.seller_id, keyword_hints=hints)
-    conn.close()
-    events = result.get("events") or []
-    print(f"scan_id={result.get('scan_id')} status={result.get('status')}")
-    for e in events:
-        flag = " baseline" if e.is_baseline else ""
-        print(f"  {e.event_type}\t{e.item_id}\t{e.old_value or ''} -> {e.new_value or ''}{flag}")
-    print(f"events={len(events)} items={result.get('item_count', 0)}")
-    return 0 if result.get("status") == "ok" else 1
 
 
 def cmd_scan_pool(args: argparse.Namespace) -> int:
     conn = _conn()
     try:
-        session = load_session(args.state)
-    except AuthError as e:
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    if args.clear_auth_pause:
-        clear_auth_paused(conn)
-    results = run_pool_once(
-        conn,
-        session,
-        on_result=lambda r: print(
-            f"seller_scan status={r.get('status')} events={len(r.get('events') or [])} "
-            f"err={r.get('error_kind')}"
-        ),
-    )
-    conn.close()
-    return 0 if all(r.get("status") in ("ok", "skipped") for r in results) else 1
+        if args.clear_auth_pause:
+            auth_service.clear_pause(conn)
+        if is_auth_paused(conn):
+            print("在线工作已暂停，请在 Helper 恢复后运行 radar auth check --ping")
+            return 1
+        with session_operation() as session:
+            results = run_pool_once(conn, session, on_result=lambda r: print(
+                f"seller_scan status={r.get('status')} error_kind={r.get('error_kind')}"))
+        return 0 if all(r.get("status") in ("ok", "skipped") for r in results) else 1
+    finally:
+        conn.close()
 
 
 def cmd_candidates(args: argparse.Namespace) -> int:
@@ -286,27 +224,12 @@ def cmd_events(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     conn = _conn()
+    print(f"scheduler start interval={args.interval}s jitter={args.jitter}s")
     try:
-        session = load_session(args.state)
-    except AuthError as e:
-        print(f"AUTH_FAIL: {e}")
-        return 1
-    print(
-        f"scheduler start interval={args.interval}s jitter={args.jitter}s "
-        f"auth_paused={is_auth_paused(conn)}"
-    )
-    try:
-        run_loop(
-            conn,
-            session,
-            interval_sec=args.interval,
-            jitter_sec=args.jitter,
-            max_rounds=args.max_rounds,
-            on_result=lambda r: print(
-                f"[{datetime.now().isoformat(timespec='seconds')}] "
-                f"status={r.get('status')} events={len(r.get('events') or [])}"
-            ),
-        )
+        completed = run_loop(conn, interval_sec=args.interval, jitter_sec=args.jitter,
+                 max_rounds=args.max_rounds, on_result=lambda r: print(
+                     f"status={r.get('status')} error_kind={r.get('error_kind')}"))
+        return 0 if completed else 1
     except KeyboardInterrupt:
         print("stopped")
     finally:
@@ -327,19 +250,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("auth", help="Auth commands")
     auth_sub = p.add_subparsers(dest="auth_cmd", required=True)
-    p_check = auth_sub.add_parser("check", help="Validate session file")
-    p_check.add_argument("--state", default=None, help="Path to session JSON")
+    p_check = auth_sub.add_parser("check", help="检查 Helper 快照及可选的闲鱼连通性")
+    p_check.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p_check.add_argument("--ping", action="store_true", help="Optional live MTOP ping")
     p_check.set_defaults(func=cmd_auth_check)
 
     p = sub.add_parser("search", help="Keyword search")
     p.add_argument("--keyword", "-k", required=True)
-    p.add_argument("--state", default=None)
+    p.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p.set_defaults(func=cmd_search)
 
     p = sub.add_parser("discover", help="Search + build seller pool")
     p.add_argument("--keyword", "-k", required=True)
-    p.add_argument("--state", default=None)
+    p.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p.add_argument("--no-enrich", action="store_true")
     p.add_argument("--max-pages", type=int, default=3)
     p.add_argument("--resume-run-id")
@@ -361,18 +284,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("fetch-seller", help="Fetch seller on-sale items")
     p.add_argument("seller_id")
-    p.add_argument("--state", default=None)
+    p.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p.add_argument("--out", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_fetch_seller)
 
     p = sub.add_parser("scan-seller", help="Fetch + snapshot + diff one seller")
     p.add_argument("seller_id")
-    p.add_argument("--state", default=None)
+    p.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p.add_argument("--keyword", default=None, help="Comma-separated keyword hints for candidates")
     p.set_defaults(func=cmd_scan_seller)
 
     p = sub.add_parser("scan-pool", help="Scan all watching sellers once")
-    p.add_argument("--state", default=None)
+    p.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p.add_argument("--clear-auth-pause", action="store_true")
     p.set_defaults(func=cmd_scan_pool)
 
@@ -389,7 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_events)
 
     p = sub.add_parser("run", help="Scheduler loop over seller pool")
-    p.add_argument("--state", default=None)
+    p.add_argument("--state", default=None, help="已废弃；Cookie 由 Helper 管理")
     p.add_argument("--interval", type=float, default=90)
     p.add_argument("--jitter", type=float, default=30)
     p.add_argument("--max-rounds", type=int, default=None)
@@ -417,7 +340,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    code = args.func(args)
+    if getattr(args, "state", None) is not None:
+        parser.error("--state 已废弃；请配置 Helper，不再读取本地 Cookie 文件。")
+    try:
+        code = args.func(args)
+    except (HelperError, AuthError, MtopError) as exc:
+        print(f"ONLINE_FAIL: {exc}", file=sys.stderr)
+        code = 1
     sys.exit(code)
 
 

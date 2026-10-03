@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import stat
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -20,6 +19,8 @@ from xianyu_radar.entrypoints.api.server import main as serve_main
 from xianyu_radar.entrypoints.api.deps import get_db
 from xianyu_radar.entrypoints.api.routes import auth, candidates, discover, events, pool, scan, status
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
+from xianyu_radar.infrastructure.goofish.session import Session
+from contextlib import contextmanager
 from xianyu_radar.infrastructure.storage.db import init_db
 from xianyu_radar.infrastructure.storage.seller_repository import add_seller_from_discovery
 from xianyu_radar.models import SellerItem
@@ -299,12 +300,7 @@ def test_api_database_connection_survives_worker_thread_switch(conn) -> None:
 
 
 def test_auth_and_discover_use_the_same_data_store(conn, monkeypatch: pytest.MonkeyPatch) -> None:
-    saved = auth.save_session(
-        auth.SessionBody(payload={"cookie": "_m_h5_tk=samplelongtoken_1710000000000; a=1"}),
-        conn,
-    )
-    assert saved["ok"] is True
-    assert auth.auth_status(conn)["looks_like_placeholder"] is False
+    _mock_session(monkeypatch)
 
     response = json.loads((FIXTURES / "search_results.json").read_text(encoding="utf-8"))
     response["data"]["resultList"][0]["data"]["item"]["main"]["clickParam"]["args"]["seller_id"] = "998877"
@@ -323,26 +319,22 @@ def test_auth_and_discover_use_the_same_data_store(conn, monkeypatch: pytest.Mon
     assert status.status(conn)["counts"]["watching_sellers"] == 1
 
 
-def test_invalid_cookie_cannot_overwrite_saved_session(conn, tmp_path: Path) -> None:
-    auth.save_session(
-        auth.SessionBody(payload={"cookie": "_m_h5_tk=validtoken_1710000000000; a=1"}),
-        conn,
-    )
+def test_removed_cookie_endpoint_preserves_old_user_file(conn, tmp_path: Path) -> None:
     path = tmp_path / "state/default.json"
-    before = path.read_text(encoding="utf-8")
-    with pytest.raises(HTTPException):
-        auth.save_session(auth.SessionBody(payload={"cookie": "a=1"}), conn)
-    assert path.read_text(encoding="utf-8") == before
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    path.parent.mkdir()
+    path.write_text('{"cookie":"synthetic-old"}')
+    before = path.read_bytes()
+    with pytest.raises(HTTPException) as error:
+        auth.save_session()
+    assert error.value.status_code == 410
+    assert error.value.detail["code"] == "cookie_management_moved_to_helper"
+    assert path.read_bytes() == before
 
 
 def test_detail_validation_failure_is_visible_and_does_not_create_sellers(
     conn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    auth.save_session(
-        auth.SessionBody(payload={"cookie": "_m_h5_tk=samplelongtoken_1710000000000; a=1"}),
-        conn,
-    )
+    _mock_session(monkeypatch)
     response = json.loads((FIXTURES / "search_results.json").read_text(encoding="utf-8"))
     monkeypatch.setattr(
         "xianyu_radar.modules.discovery.keyword_search.call_mtop",
@@ -371,10 +363,7 @@ def test_placeholder_cannot_be_scanned(conn) -> None:
 def test_scan_candidates_and_events_share_the_same_data_store(
     conn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    auth.save_session(
-        auth.SessionBody(payload={"cookie": "_m_h5_tk=samplelongtoken_1710000000000; a=1"}),
-        conn,
-    )
+    _mock_session(monkeypatch)
     add_seller_from_discovery(
         conn, seller_id="SELLER_TEST", nickname="Example", source_keyword="Sony A7M4", source_item_id=None
     )
@@ -413,3 +402,10 @@ def test_scan_candidates_and_events_share_the_same_data_store(
     listed = candidates.get_candidates(conn=conn)
     assert listed["count"] >= 1
     assert events.get_events(conn=conn)["count"] >= 1
+
+
+def _mock_session(monkeypatch):
+    @contextmanager
+    def operation():
+        yield Session("synthetic", "fixture", "offline")
+    monkeypatch.setattr("xianyu_radar.entrypoints.api.deps.session_operation", operation)

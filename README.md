@@ -36,18 +36,17 @@ radar serve --host 127.0.0.1 --port 8765
 # API 文档 http://127.0.0.1:8765/docs
 ```
 
-真实扫描需要在「登录态」粘贴含 `_m_h5_tk` 的 Cookie（不要用 `tokensecret` 测试占位）。
-如果发现时提示闲鱼人机验证，请先在浏览器完成验证并更新 Cookie；未取得真实数字卖家 ID 的搜索商品不会进入商家池。
+所有在线请求从 Helper 获取临时完整 Cookie 快照。请先按下文配置 Helper；登录、续期和人机验证在 Helper 完成。未取得真实数字卖家 ID 的搜索商品不会进入商家池。
 
 数据目录：
 
 ```text
 data/radar.sqlite3       # 唯一的业务数据库
-data/state/default.json  # 登录态
+data/state/              # 旧用户文件保留，在线代码不再读取
 data/debug/               # 调试文件
 ```
 
-从旧版升级时，将原 `data/prod/radar.sqlite3` 和 `data/prod/state/` 中的文件移到上述位置；不要覆盖已经存在的目标文件。本工作区的数据已完成迁移。
+从旧版升级时，将原 `data/prod/radar.sqlite3` 中的业务数据库移到上述位置；不要覆盖已经存在的目标文件。本工作区的数据已完成迁移。
 
 数据库初始化会按版本升级；升级前请备份 `data/radar.sqlite3`。本工作区的 v1 备份存于 `data/backups/`。修复前的候选标为 `legacy_unverified`，在 Web 候选页或 `radar candidates --quality legacy_unverified` 中复核；人工审核状态仍保留。
 
@@ -59,8 +58,13 @@ Web 候选页可按时间、数据质量和审核状态筛选；概览统计当�
 
 ## 登录态
 
-将 Cookie 放到 `data/state/default.json`（见 `docs/session_format.md`）。
-必须包含 `_m_h5_tk`。也可在 Web「登录态」页粘贴保存。
+服务端通过以下环境变量配置 Helper：
+
+- `RADAR_HELPER_BASE_URL`：Helper 根地址，跨机器使用 HTTPS，同机受控回环可用 HTTP。
+- `RADAR_HELPER_USERNAME`、`RADAR_HELPER_PASSWORD`：有权访问目标账号的 Helper 用户凭据，通过受保护的服务环境配置，勿写入源码、浏览器或命令行参数。
+- `RADAR_HELPER_ACCOUNT_ID`：目标账号 ID，由服务端固定。
+
+Helper 必须实现配套的 Cookie 快照和增量回写契约。获取或回写不会启用账号，部署前需在 Helper 确认账号登录、归属及既有续期条件。迁移说明见 [`docs/session_format.md`](docs/session_format.md)。
 
 ```bash
 radar auth check
@@ -90,7 +94,7 @@ radar candidates --since 24h
 radar candidates --quality normal --since 24h
 radar events --since 24h
 
-# 5) 长期轮询（慢速 + 抖动）
+# 5) 仅在显式需要时启动已有长期轮询（本工作区默认手动扫描）
 radar run --interval 90 --jitter 30
 ```
 
@@ -112,7 +116,7 @@ radar run --interval 90 --jitter 30
 
 | 包 | 职责 |
 |----|------|
-| `auth` | 登录态保存、状态和检查 |
+| `auth` | Helper 来源、状态和在线检查 |
 | `discovery` | 关键词搜索、解析结果、发现商家并入池 |
 | `pool` | 查看商家池、修改商家状态 |
 | `scan` | 拉取店铺商品、比较变化、保存事件和候选、轮询商家池 |

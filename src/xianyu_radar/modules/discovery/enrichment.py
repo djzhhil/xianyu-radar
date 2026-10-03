@@ -8,6 +8,7 @@ import time
 
 from xianyu_radar.infrastructure.goofish.mtop import call_mtop, make_mtop_client
 from xianyu_radar.infrastructure.goofish.session import Session
+from xianyu_radar.infrastructure.goofish.errors import STOP_KINDS
 from xianyu_radar.modules.discovery.diagnostics import detail_diagnostic, error_kind_for
 from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
 from xianyu_radar.modules.discovery import repository
@@ -26,7 +27,7 @@ def enrich_pending(
     error_kind: str | None = None, caught: Exception | None = None,
 ) -> tuple[str | None, Exception | None]:
     # A platform block stops further requests; identified sellers remain usable.
-    if error_kind not in {"rate_limit", "verification_required", "auth"}:
+    if error_kind not in STOP_KINDS and not session.stop_kind:
         pending = repository.pending_items(conn, run_id, max_enrich)
         if pending:
             with make_mtop_client() as client:
@@ -46,7 +47,7 @@ def enrich_pending(
                             break
                         except Exception as exc:
                             kind = error_kind_for(exc)
-                            if kind in {"rate_limit", "verification_required", "auth"}:
+                            if kind in STOP_KINDS or session.stop_kind:
                                 error_kind, caught = kind, exc
                                 repository.set_item_error(conn, run_id, item_id, "blocked", kind)
                                 break
@@ -54,6 +55,6 @@ def enrich_pending(
                                 time.sleep(1.0 + random.uniform(0, 0.5))
                             else:
                                 repository.set_item_error(conn, run_id, item_id, "detail_error", kind)
-                    if error_kind in {"rate_limit", "verification_required", "auth"}:
+                    if error_kind in STOP_KINDS or session.stop_kind:
                         break
     return error_kind, caught

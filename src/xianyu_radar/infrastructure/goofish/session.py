@@ -1,118 +1,65 @@
-"""Auth session loading from state JSON files."""
-
+"""Short-lived online session; legacy parsing is explicit and offline only."""
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Callable
 
-from xianyu_radar import config as cfg
-
-
-class AuthError(Exception):
-    """Login / session problems."""
+from xianyu_radar.infrastructure.goofish.cookie_jar import CookieJar
+from xianyu_radar.infrastructure.goofish.errors import AuthError, HelperError
 
 
 @dataclass
 class Session:
-    cookies: str
-    token: str
-    source: str
+    # The first fields preserve the offline business fixture constructor. MTOP
+    # refuses these flat fixtures: production requires the Helper submit port.
+    cookies: str = field(default="", repr=False)
+    token: str = field(default="", repr=False)
+    source: str = "offline"
     cookie_count: int = 0
+    jar: CookieJar | None = field(default=None, repr=False)
+    credential_version: str = field(default="", repr=False)
+    account_id: str = ""
+    submit_updates: Callable | None = field(default=None, repr=False)
+    closed: bool = False
+    stop_kind: str | None = None
 
     @property
     def ok(self) -> bool:
-        return bool(self.cookies and self.token)
+        return not self.closed and (self.jar is not None or bool(self.cookies and self.token))
 
     @property
     def looks_like_placeholder(self) -> bool:
-        """True for unit-test / docs sample tokens that cannot call goofish."""
-        t = (self.token or "").lower()
-        return t in {"tokensecret", "hello", "token", "test", "abc"} or t.startswith("dummy")
+        return self.jar is None and (self.token.lower() in {"tokensecret", "hello", "token", "test", "abc"} or self.token.startswith("dummy"))
+
+    def ensure_online(self) -> None:
+        if self.closed or self.stop_kind:
+            raise HelperError(self.stop_kind or "helper_contract", "当前临时会话已停止，请重新获取 Helper 状态。")
+        if self.jar is None or self.submit_updates is None or self.source != "Helper":
+            raise HelperError("helper_config", "在线请求只接受 Helper 临时会话，不支持本地 Cookie。")
+
+    def invalidate(self, kind: str) -> None:
+        self.stop_kind = kind
+        if self.jar is not None:
+            self.jar.cookies.clear()
+
+    def close(self) -> None:
+        if self.jar is not None:
+            self.jar.cookies.clear()
+        self.cookies = self.token = self.credential_version = ""
+        self.submit_updates = None
+        self.closed = True
 
 
-def _cookies_from_list(cookies: list) -> tuple[str, str, int]:
-    """Build cookie header and extract _m_h5_tk token from cookie list."""
-    pairs: list[str] = []
-    token = ""
-    for c in cookies:
-        if not isinstance(c, dict):
-            continue
-        name = c.get("name") or c.get("Name")
-        value = c.get("value") if "value" in c else c.get("Value")
-        if not name or value is None:
-            continue
-        pairs.append(f"{name}={value}")
-        if name == "_m_h5_tk":
-            token = str(value).split("_", 1)[0]
-    return "; ".join(pairs), token, len(pairs)
-
-
-def _cookies_from_header(cookie_header: str) -> tuple[str, str, int]:
-    token = ""
-    parts = [p.strip() for p in cookie_header.split(";") if p.strip()]
-    for part in parts:
-        if "=" not in part:
-            continue
-        name, value = part.split("=", 1)
-        if name.strip() == "_m_h5_tk":
-            token = value.strip().split("_", 1)[0]
-    return cookie_header.strip(), token, len(parts)
-
-
-def load_session(path: Path | str | None = None) -> Session:
-    """
-    Load session from JSON. Supported shapes:
-
-    1) { "cookies": [ { "name", "value", ... }, ... ] }
-    2) Asher-style snapshot with top-level "cookies" array (+ optional env/headers)
-    3) { "cookie": "a=1; b=2; _m_h5_tk=xxx_ts" }
-    4) { "cookies": "a=1; b=2" }
-    """
-    if path is None:
-        default = cfg.STATE_DIR / "default.json"
-        if default.exists():
-            path = default
-        else:
-            candidates = sorted(cfg.STATE_DIR.glob("*.json"))
-            if not candidates:
-                raise AuthError(
-                    f"No session file found under {cfg.STATE_DIR}. "
-                    "Place a cookie JSON at data/state/default.json"
-                )
-            path = candidates[0]
-    path = Path(path)
-    if not path.exists():
-        raise AuthError(f"Session file not found: {path}")
-
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise AuthError("Session JSON must be an object")
-
-    if isinstance(raw.get("cookies"), list):
-        cookie_str, token, count = _cookies_from_list(raw["cookies"])
-    elif isinstance(raw.get("cookies"), str):
-        cookie_str, token, count = _cookies_from_header(raw["cookies"])
-    elif isinstance(raw.get("cookie"), str):
-        cookie_str, token, count = _cookies_from_header(raw["cookie"])
-    else:
-        raise AuthError(
-            "Unsupported session format. Need cookies list or cookie header string."
-        )
-
+def parse_offline_session(raw: dict) -> Session:
+    """Parse synthetic fixtures only; no filesystem or default-state lookup."""
+    cookies = raw.get("cookies", raw.get("cookie", ""))
+    if isinstance(cookies, list):
+        pairs = [(c.get("name"), c.get("value")) for c in cookies if isinstance(c, dict)]
+        cookies = "; ".join(f"{name}={value}" for name, value in pairs if name and value is not None)
+    if not isinstance(cookies, str):
+        raise AuthError("无效离线夹具")
+    parts = [p.strip() for p in cookies.split(";") if p.strip()]
+    token = next((p.split("=", 1)[1].split("_", 1)[0] for p in parts if p.startswith("_m_h5_tk=")), "")
     if not token:
-        raise AuthError("Missing _m_h5_tk cookie (required for MTOP sign)")
-
-    return Session(
-        cookies=cookie_str,
-        token=token,
-        source=str(path),
-        cookie_count=count,
-    )
-
-
-def try_load_session(path: Path | str | None = None) -> Session | None:
-    try:
-        return load_session(path)
-    except AuthError:
-        return None
+        raise AuthError("离线夹具缺少签名 Token")
+    return Session(cookies, token, "offline", len(parts))

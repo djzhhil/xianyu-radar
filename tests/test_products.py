@@ -1,6 +1,7 @@
 """Product-only detail parsing and API errors."""
 
 import pytest
+from contextlib import contextmanager
 from fastapi import HTTPException
 
 from xianyu_radar.entrypoints.api.routes import products
@@ -58,7 +59,13 @@ def test_api_rejects_invalid_ids_before_loading_session(monkeypatch, item_id):
     (AuthError("token expired"), 401),
 ])
 def test_api_reports_platform_errors(monkeypatch, exception, status):
-    monkeypatch.setattr(products, "require_session", lambda: Session("cookie", "real-token", "test"))
+    @contextmanager
+    def operation():
+        try:
+            yield Session("synthetic", "fixture", "offline")
+        except Exception:
+            raise
+    monkeypatch.setattr("xianyu_radar.entrypoints.api.deps.session_operation", operation)
 
     def fail(*args):
         raise exception
@@ -69,8 +76,10 @@ def test_api_reports_platform_errors(monkeypatch, exception, status):
     assert error.value.status_code == status
 
 
-def test_api_rejects_placeholder_cookie(monkeypatch):
-    monkeypatch.setattr(products, "require_session", lambda: Session("cookie", "token", "test"))
+def test_api_requires_helper_config(monkeypatch):
+    for key in ("BASE_URL", "USERNAME", "PASSWORD", "ACCOUNT_ID"):
+        monkeypatch.delenv("RADAR_HELPER_" + key, raising=False)
     with pytest.raises(HTTPException) as error:
         products.product_detail("123")
-    assert error.value.status_code == 400
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "helper_config"

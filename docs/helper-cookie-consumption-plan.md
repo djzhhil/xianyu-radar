@@ -1,6 +1,6 @@
 # Reader 改用 Helper 管理 Cookie 的实施计划
 
-日期：2026-10-03。状态：建议书，尚未修改运行代码。
+日期：2026-10-03。状态：Reader 已按固定契约完成实现和离线验收；具体交付、验证及恢复能力限制见 [验收记录](helper-cookie-implementation.md)。生产部署与真实联调未执行。
 
 Reader 指本仓库 `xianyu-radar`，检查基线为 `7243743`。Helper 生产基线为 `cb559f8`，配套契约位于 `/root/projects/xianyu-helper-project/worktrees/production/docs/cookie-exchange-integration-plan.md`。实施时重新核对两项目当前代码，以 Helper 文档为第一版接口契约依据。
 

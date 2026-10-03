@@ -10,7 +10,7 @@ pytest -q
 
 Online path (requires real cookie):
 
-1. Export goofish cookies to `data/state/default.json` (see `docs/session_format.md`).
+1. Configure Helper using `docs/session_format.md`; log in and handle verification in Helper.
 2. `radar auth check` then optionally `radar auth check --ping`
 3. `radar discover --keyword "你的已验证商品关键词"`
 4. `radar pool list`

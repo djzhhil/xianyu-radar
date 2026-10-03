@@ -35,4 +35,4 @@ NODE_PATH=/tmp/radar-ui-tools/node_modules node scripts/workbench_smoke.cjs
 
 也可用 `RADAR_BROWSER_PATH` 指定已有 Chromium 可执行文件，用 `RADAR_UI_ARTIFACT_DIR` 指定截图目录；默认截图位于 `/tmp/xianyu-radar-workbench`。测试服务使用本机 `18766` 端口，占用时应先选用空闲测试端口，而不是关闭现有服务。
 
-覆盖：商家添加与重复添加、暂停状态、详情视图、备注保存与重载、目录筛选分页、主图正常/失效/缺失、候选筛选和审核、刷新后图标保留、URL 片段切换、桌面与移动端五个页面的宽度、JavaScript 错误。
+覆盖：Helper 状态页、移除 Cookie 输入、重新检查成功/失败与按钮恢复、商家添加与重复添加、暂停状态、详情视图、备注保存与重载、目录筛选分页、主图正常/失效/缺失、候选筛选和审核、刷新后图标保留、URL 片段切换、桌面与移动端五个页面的宽度、JavaScript 错误。

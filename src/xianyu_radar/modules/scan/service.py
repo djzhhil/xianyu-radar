@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timezone
 
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
+from xianyu_radar.infrastructure.goofish.errors import HelperError, error_kind
+from xianyu_radar.infrastructure.storage.auth_state import set_auth_paused
 from xianyu_radar.infrastructure.goofish.session import AuthError, Session
 from xianyu_radar.modules.scan.candidate_detector import process_new_item_events
 from xianyu_radar.config import MAX_CONSECUTIVE_FAILURES
@@ -237,22 +239,23 @@ def _scan_seller_unlocked(
             "VALUES (?,?,?,?, 'failed', 'auth')",
             (scan_id, seller_id, _now(), _now()),
         )
-        conn.execute(
-            "INSERT OR REPLACE INTO meta(key, value) VALUES ('auth_paused', '1')"
-        )
+        set_auth_paused(conn, "auth")
         conn.commit()
         return {"scan_id": scan_id, "status": "failed", "error_kind": "auth", "error": str(e)}
-    except MtopError as e:
-        kind = "rate_limit" if "VALIDATE" in str(e) else "network"
+    except (MtopError, HelperError) as e:
+        kind = error_kind(e)
         conn.execute(
             "INSERT INTO scans(id, seller_id, started_at, finished_at, status, error_kind) "
             "VALUES (?,?,?,?, 'failed', ?)",
             (scan_id, seller_id, _now(), _now(), kind),
         )
-        conn.execute(
-            "UPDATE sellers SET consecutive_failures = consecutive_failures + 1 WHERE seller_id=?",
-            (seller_id,),
-        )
+        if kind == "verification_required":
+            set_auth_paused(conn, kind)
+        if not isinstance(e, HelperError):
+            conn.execute(
+                "UPDATE sellers SET consecutive_failures = consecutive_failures + 1 WHERE seller_id=?",
+                (seller_id,),
+            )
         conn.commit()
         return {"scan_id": scan_id, "status": "failed", "error_kind": kind, "error": str(e)}
 

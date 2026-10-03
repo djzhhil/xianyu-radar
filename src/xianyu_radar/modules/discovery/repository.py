@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+
+from xianyu_radar.infrastructure.storage.auth_state import set_auth_paused
 import uuid
 from datetime import datetime, timezone
 
@@ -165,6 +167,8 @@ def finish_run(conn: sqlite3.Connection, run_id: str, keyword: str,
         (_now(), len(items), len(items), new_sellers, unique_sellers, enriched,
          unresolved, unparsed, status, error_kind, run_id),
     )
+    if error_kind in {"auth", "verification_required"}:
+        set_auth_paused(conn, error_kind)
     conn.commit()
     run = conn.execute(
         "SELECT page_count, raw_result_count, next_page, seller_count FROM discovery_runs WHERE id=?",

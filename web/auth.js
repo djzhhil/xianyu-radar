@@ -1,75 +1,40 @@
-import { $, api, toast, setResult, setLog, withBusy } from "./common.js";
+import { $, api, toast, setResult, setLog, withBusy, formatTime, scanErrors } from "./common.js";
 
 export async function refreshStatus() {
   const status = await api("/api/status");
   $("#sSellers").textContent = status.counts.watching_sellers;
   $("#sItems").textContent = status.counts.items;
   $("#sCands").textContent = status.counts.candidates;
-
+  const auth = status.auth;
   const pill = $("#authPill");
-  if (!status.auth.ok) {
-    pill.textContent = "未登录 · 设置 Cookie";
-    pill.className = "auth-pill bad";
-  } else if (status.auth.looks_like_placeholder) {
-    pill.textContent = "测试 Cookie · 不能在线请求";
-    pill.className = "auth-pill bad";
-  } else if (status.auth.paused) {
-    pill.textContent = "登录态已暂停 · 请更新 Cookie";
-    pill.className = "auth-pill bad";
-  } else {
-    pill.textContent = "登录态已保存";
-    pill.className = "auth-pill ok";
-  }
+  pill.textContent = auth.paused ? "在线工作已暂停 · 到 Helper 恢复"
+    : !auth.configured ? "Helper 未配置"
+    : auth.connection_status === "error" ? "Helper 连接异常"
+    : "Helper 登录态 · 查看状态";
+  pill.className = `auth-pill ${auth.paused || !auth.configured || auth.connection_status === "error" ? "bad" : "ok"}`;
+  $("#helperAccount").textContent = auth.account_id || "未配置";
+  $("#helperConnection").textContent = ({ connected: "已获取快照", unchecked: "尚未检查", error: "连接异常", unconfigured: "未配置" })[auth.connection_status] || "尚未检查";
+  $("#helperFetched").textContent = formatTime(auth.last_fetch_at);
+  $("#helperSubmitted").textContent = formatTime(auth.last_submit_at);
+  $("#helperSync").textContent = ({ synced: "已同步", not_running: "账号未运行", not_needed: "无需同步", failed: "已保存，Helper 运行时同步异常" })[auth.runtime_sync_status] || "暂无提交";
+  const reason = auth.pause_reason || auth.last_error_kind;
+  $("#helperPause").textContent = reason ? scanErrors[reason] || "在线操作异常，请重新检查" : auth.paused ? "需要重新检查" : "无";
   return status;
 }
 
-function parseCookieInput(raw) {
-  const text = String(raw || "").trim();
-  if (!text) throw new Error("请先粘贴 Cookie 或会话 JSON");
-  if (text.startsWith("{") || text.startsWith("[")) {
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error("JSON 解析失败，请检查格式");
-    }
-    if (Array.isArray(parsed)) return { cookies: parsed };
-    if (parsed && typeof parsed === "object" && (parsed.cookies || parsed.cookie)) {
-      return parsed;
-    }
-    throw new Error('JSON 需含 "cookie" 字符串或 "cookies" 数组');
-  }
-  if (!/_m_h5_tk\s*=/.test(text)) {
-    throw new Error("Cookie 缺少 _m_h5_tk，无法签名闲鱼请求");
-  }
-  return { cookie: text.replace(/\r?\n/g, " ").trim() };
-}
-
 export function initAuth({ activateTab }) {
-  $("#authPill").addEventListener("click", () => {
-    activateTab("auth");
-    $("#cookieInput").focus();
-  });
-
-  $("#btnSaveCookie").addEventListener("click", () => withBusy($("#btnSaveCookie"), "保存中…", async () => {
+  $("#authPill").addEventListener("click", () => activateTab("auth"));
+  $("#btnCheckHelper").addEventListener("click", () => withBusy($("#btnCheckHelper"), "检查中…", async () => {
     try {
-      const payload = parseCookieInput($("#cookieInput").value);
-      const result = await api("/api/auth/session", {
-        method: "POST",
-        body: JSON.stringify({ payload, filename: "default.json" }),
-      });
-      setLog("#cookieLog", result);
-      $("#cookieInput").value = "";
-      const message = result.looks_like_placeholder
-        ? "已保存测试 Cookie，无法用于在线发现和扫描。"
-        : "登录态已保存。实际可用性会在发现或扫描时检查。";
-      setResult("#authResult", message);
-      toast(message);
-      await refreshStatus();
+      const result = await api("/api/auth/check?ping=true", { method: "POST" });
+      setLog("#helperLog", result);
+      setResult("#authResult", "Helper 快照与闲鱼在线请求检查通过，已解除暂停。");
+      toast("检查通过");
     } catch (error) {
-      setLog("#cookieLog", error.message);
+      setLog("#helperLog", error.message);
       setResult("#authResult", error.message, true);
       toast(error.message);
     }
+    await refreshStatus();
   }));
 }

@@ -34,16 +34,24 @@
   <main>
 
     <section class="panel tab-panel" id="tab-auth">
-      <h2>登录态</h2>
-      <p class="hint">Cookie 需包含 <code>_m_h5_tk</code>。</p>
-      <textarea id="cookieInput" rows="5" spellcheck="false" aria-label="Cookie 或会话 JSON" placeholder="_m_h5_tk=...; _m_h5_tk_enc=...; cookie2=..."></textarea>
+      <h2>Helper 登录态</h2>
+      <p class="hint">来源：Helper。请在 Helper 完成登录、续期或人机验证；本工作台不接收或保存 Cookie。</p>
+      <dl>
+        <dt>目标账号</dt><dd id="helperAccount">未配置</dd>
+        <dt>连接状态</dt><dd id="helperConnection">尚未检查</dd>
+        <dt>上次获取</dt><dd id="helperFetched">暂无</dd>
+        <dt>上次提交</dt><dd id="helperSubmitted">暂无</dd>
+        <dt>Helper 同步状态</dt><dd id="helperSync">暂无提交</dd>
+        <dt>暂停或异常原因</dt><dd id="helperPause">无</dd>
+      </dl>
+      <p class="hint">获取快照不代表闲鱼在线可用。“重新检查”会发起一次闲鱼请求，通过后解除暂停。</p>
       <div class="actions-row">
-        <button type="button" id="btnSaveCookie"><i data-lucide="save"></i>保存登录态</button>
+        <button type="button" id="btnCheckHelper"><i data-lucide="refresh-cw"></i>重新检查</button>
       </div>
       <p class="result-message" id="authResult" role="status"></p>
       <details class="response-details">
-        <summary>查看接口响应</summary>
-        <pre class="log" id="cookieLog"></pre>
+        <summary>查看检查结果</summary>
+        <pre class="log" id="helperLog"></pre>
       </details>
     </section>
 
