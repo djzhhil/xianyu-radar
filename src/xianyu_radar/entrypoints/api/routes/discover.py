@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +12,7 @@ from xianyu_radar.entrypoints.api.deps import get_db, require_session
 from xianyu_radar.infrastructure.goofish.mtop import MtopError
 from xianyu_radar.infrastructure.goofish.session import AuthError
 from xianyu_radar.modules.discovery.service import discover_sellers, list_discovery_runs
+from xianyu_radar.modules.discovery.service import get_discovery_run as read_discovery_run
 from xianyu_radar.modules.discovery.keyword_search import DiscoveryParseError
 
 router = APIRouter()
@@ -29,21 +29,10 @@ def get_discovery_runs(
 
 @router.get("/runs/{run_id}")
 def get_discovery_run(run_id: str, conn: sqlite3.Connection = Depends(get_db)) -> dict:
-    run = conn.execute("SELECT * FROM discovery_runs WHERE id=?", (run_id,)).fetchone()
-    if not run:
+    result = read_discovery_run(conn, run_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="发现记录不存在")
-    pages = conn.execute("SELECT * FROM discovery_pages WHERE run_id=? ORDER BY page_number", (run_id,)).fetchall()
-    entries = conn.execute(
-        "SELECT page_number, entry_index, outcome, item_ref FROM discovery_entries "
-        "WHERE run_id=? ORDER BY page_number, entry_index", (run_id,)
-    ).fetchall()
-    items = conn.execute(
-        "SELECT item_id, seller_id, resolution, error_kind, diagnostic FROM discovery_items "
-        "WHERE run_id=? ORDER BY rowid", (run_id,)
-    ).fetchall()
-    return {"run": dict(run), "pages": [dict(row) for row in pages],
-            "entries": [dict(row) for row in entries],
-            "items": [{**dict(row), "diagnostic": json.loads(row["diagnostic"])} for row in items]}
+    return result
 
 
 class DiscoverBody(BaseModel):

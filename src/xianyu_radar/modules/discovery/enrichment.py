@@ -10,6 +10,7 @@ from xianyu_radar.infrastructure.goofish.mtop import call_mtop, make_mtop_client
 from xianyu_radar.infrastructure.goofish.session import Session
 from xianyu_radar.modules.discovery.diagnostics import detail_diagnostic, error_kind_for
 from xianyu_radar.modules.discovery.item_parser import extract_seller_id, extract_seller_nick
+from xianyu_radar.modules.discovery import repository
 
 
 def fetch_detail(session: Session, item_id: str, client=None) -> dict:
@@ -26,11 +27,7 @@ def enrich_pending(
 ) -> tuple[str | None, Exception | None]:
     # A platform block stops further requests; identified sellers remain usable.
     if error_kind not in {"rate_limit", "verification_required", "auth"}:
-        pending = conn.execute(
-            "SELECT item_id FROM discovery_items WHERE run_id=? AND seller_id IS NULL "
-            "AND (error_kind IS NULL OR error_kind IN ('ambiguous_image', 'conflicting_seller')) "
-            "ORDER BY rowid LIMIT ?", (run_id, max_enrich),
-        ).fetchall()
+        pending = repository.pending_items(conn, run_id, max_enrich)
         if pending:
             with make_mtop_client() as client:
                 for index, row in enumerate(pending):
@@ -42,35 +39,21 @@ def enrich_pending(
                             detail = fetch_detail(session, item_id, client)
                             seller_id = extract_seller_id(detail)
                             seller_nick = extract_seller_nick(detail)
-                            conn.execute(
-                                "UPDATE discovery_items SET seller_id=?, "
-                                "seller_nick=COALESCE(?, seller_nick), resolution=?, "
-                                "error_kind=?, diagnostic=? WHERE run_id=? AND item_id=?",
-                                (seller_id, seller_nick, "detail" if seller_id else "unresolved",
-                                 None if seller_id else "seller_id_missing",
-                                 detail_diagnostic(detail, seller_id),
-                                 run_id, item_id),
+                            repository.save_detail_result(
+                                conn, run_id, item_id, seller_id=seller_id, seller_nick=seller_nick,
+                                diagnostic=detail_diagnostic(detail, seller_id),
                             )
-                            conn.commit()
                             break
                         except Exception as exc:
                             kind = error_kind_for(exc)
                             if kind in {"rate_limit", "verification_required", "auth"}:
                                 error_kind, caught = kind, exc
-                                conn.execute(
-                                    "UPDATE discovery_items SET resolution='blocked', error_kind=? "
-                                    "WHERE run_id=? AND item_id=?", (kind, run_id, item_id),
-                                )
-                                conn.commit()
+                                repository.set_item_error(conn, run_id, item_id, "blocked", kind)
                                 break
                             if attempt == 0:
                                 time.sleep(1.0 + random.uniform(0, 0.5))
                             else:
-                                conn.execute(
-                                    "UPDATE discovery_items SET resolution='detail_error', error_kind=? "
-                                    "WHERE run_id=? AND item_id=?", (kind, run_id, item_id),
-                                )
-                                conn.commit()
+                                repository.set_item_error(conn, run_id, item_id, "detail_error", kind)
                     if error_kind in {"rate_limit", "verification_required", "auth"}:
                         break
     return error_kind, caught

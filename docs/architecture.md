@@ -81,7 +81,7 @@ src/xianyu_radar/
 | 目录 | 文件与职责 |
 | --- | --- |
 | `auth/` | `service.py`：登录态查看、保存、检查 MTOP 连通性、清除认证暂停。 |
-| `discovery/` | `service.py`：发现流程入口；`pagination.py`：下一页判断；`diagnostics.py`：异常分类和脱敏诊断；`enrichment.py`：详情请求、商家补全、延时与重试；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。数据存取职责继续拆分。 |
+| `discovery/` | `service.py`：发现流程入口；`pagination.py`：下一页判断；`diagnostics.py`：异常分类和脱敏诊断；`enrichment.py`：详情请求、商家补全、延时与重试；`repository.py`：任务、分页、商品和诊断记录读写、归属冲突处理、商家入池与种子商品保存；`keyword_search.py`：调用搜索接口；`item_parser.py`：解析搜索结果、提取卖家信息。 |
 | `pool/` | `service.py`：商家列表与状态修改的业务入口。实际商家表读写由共用的 `infrastructure/storage/seller_repository.py` 完成。 |
 | `scan/` | `service.py`：单商家扫描、落库和事件生成；`runner.py`：逐个扫描商家池及循环调度；`fetcher.py`：拉取店铺商品；`shop_parser.py`：解析店铺列表；`diff.py`：比较前后商品；`item_repository.py`：商品当前态读写；`history.py`：写快照、查扫描记录；`events.py`：查询变化事件；`candidate_detector.py`：根据新商品事件生成候选。 |
 | `candidates/` | `service.py`：候选列表与状态修改入口；`repository.py`：候选表查询、状态更新。 |
@@ -130,15 +130,17 @@ flowchart LR
 
 ### 1. 保存或检查登录态
 
-`web/app.js` → `routes/auth.py` → `auth/service.py` → `infrastructure/goofish/session.py` 解析 Cookie；需要在线检查时再由 `infrastructure/goofish/mtop.py` 发请求。保存的会话文件在 `data/state/`，认证暂停标志在 SQLite 的 `meta` 表。
+`web/auth.js` → `routes/auth.py` → `auth/service.py` → `infrastructure/goofish/session.py` 解析 Cookie；需要在线检查时再由 `infrastructure/goofish/mtop.py` 发请求。保存的会话文件在 `data/state/`，认证暂停标志在 SQLite 的 `meta` 表。
 
 ### 2. 发现商家
 
-`web/app.js` → `routes/discover.py` → `discovery/service.py` → `keyword_search.py` → `item_parser.py`。搜索使用共用的 MTOP 客户端。解析器从搜索结果中读取明确的数字卖家 ID，也从商品图片地址提取数字候选值。图片候选值只在当前搜索结果中没有跨卖家复用、同一卖家没有多个不同候选值时作为卖家 ID 使用；这一步只检查内存中的搜索结果，不请求商家商品列表。同一搜索卖家的其他商品可关联到这个 ID。仍未识别的商品沿用详情接口补全；遇到人机验证时，如果已有识别的商家，就保留这些商家并在响应中标明 `validation_required`，否则返回 403。无法识别卖家的搜索结果计入 `skipped_no_seller`。本步不调用扫描模块。
+`web/discovery.js` → `routes/discover.py` → `discovery/service.py` → `keyword_search.py` → `item_parser.py`。搜索使用共用的 MTOP 客户端。解析器从搜索结果中读取明确的数字卖家 ID，也从商品图片地址提取数字候选值。图片候选值只在当前搜索结果中没有跨卖家复用、同一卖家没有多个不同候选值时作为卖家 ID 使用；这一步只检查内存中的搜索结果，不请求商家商品列表。同一搜索卖家的其他商品可关联到这个 ID。仍未识别的商品由 `enrichment.py` 请求详情补全；遇到人机验证时，如果已有识别的商家，就保留这些商家并在响应中标明 `validation_required`，否则返回 403。无法识别卖家的搜索结果计入 `skipped_no_seller`。本步不调用扫描模块。
+
+发现模块内部的调用方向：`service.py` 调用搜索、分页规则、补全和数据仓库；`enrichment.py` 调用详情协议、解析器、诊断和数据仓库；`repository.py` 调用诊断及公共商家仓库。后两者不反向调用流程入口。发现任务列表和诊断查询也通过 `service.py` 进入 `repository.py`，API 路由不直接执行 SQL。原有分页提交、补全逐项提交、异常回滚和入池去重行为保持不变。测试模拟详情请求时使用 `discovery.enrichment.fetch_detail`。
 
 ### 3. 管理商家池
 
-`routes/pool.py` → `pool/service.py` → `storage/seller_repository.py` → SQLite。查看 `watching` 商家或修改商家状态，都在这一条链里完成。
+`web/pool.js` → `routes/pool.py` → `pool/service.py` → `storage/seller_repository.py` → SQLite。查看 `watching` 商家或修改商家状态，都在这一条链里完成。
 
 ### 4. 扫描商家
 
@@ -150,7 +152,7 @@ flowchart LR
 
 ### 5. 查看候选与事件
 
-候选：`web/app.js` → `GET /api/candidates`（`routes/candidates.py`）→ `candidates/service.py` → `candidates/repository.py` → `candidates`、`candidate_sellers` 表。候选列表可按时间、数据质量和审核状态筛选；同一响应的 `summary` 按时间和数据质量汇总状态数量及多商家出现数量。事件：`routes/events.py` → `scan/service.py` → `scan/events.py` → `item_events` 表。这里读取先前扫描写出的结果，没有反向调用扫描执行流程。
+候选：`web/candidates.js` → `GET /api/candidates`（`routes/candidates.py`）→ `candidates/service.py` → `candidates/repository.py` → `candidates`、`candidate_sellers` 表。候选列表可按时间、数据质量和审核状态筛选；同一响应的 `summary` 按时间和数据质量汇总状态数量及多商家出现数量。事件：`web/scan.js` → `routes/events.py` → `scan/service.py` → `scan/events.py` → `item_events` 表。这里读取先前扫描写出的结果，没有反向调用扫描执行流程。
 
 ### 6. 查看单件商品详情
 

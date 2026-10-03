@@ -69,3 +69,17 @@ def test_business_api_routes_enter_their_own_feature() -> None:
         feature = aliases.get(path.stem, path.stem)
         assert feature in FEATURES, f"{path} has no declared feature"
         assert _feature_imports(path) == {feature}, path
+
+
+@pytest.mark.parametrize("relative_path", [
+    "modules/discovery/service.py",
+    "modules/discovery/enrichment.py",
+    "entrypoints/api/routes/discover.py",
+])
+def test_discovery_sql_stays_in_repository(relative_path):
+    path = SOURCE / relative_path
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    calls = [node.func.attr for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+             and node.func.attr in {"execute", "executemany", "executescript"}]
+    assert not calls, f"{path} contains SQL calls: {calls}"

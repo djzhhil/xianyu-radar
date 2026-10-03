@@ -11,6 +11,8 @@ from xianyu_radar.infrastructure.goofish.session import Session
 from xianyu_radar.infrastructure.storage.db import init_db
 from xianyu_radar.modules.discovery.diagnostics import detail_diagnostic, error_kind_for
 from xianyu_radar.modules.discovery.enrichment import enrich_pending
+from xianyu_radar.modules.discovery import repository
+from xianyu_radar.modules.discovery.service import get_discovery_run, list_discovery_runs
 
 from xianyu_radar.modules.discovery.pagination import following_page
 
@@ -91,4 +93,21 @@ def test_enrichment_retries_and_obeys_item_limit(tmp_path, monkeypatch, retry_su
     rows = conn.execute("SELECT seller_id, resolution, error_kind FROM discovery_items ORDER BY item_id").fetchall()
     assert tuple(rows[0]) == (("123", "detail", None) if retry_succeeds else (None, "detail_error", "network"))
     assert rows[1]["resolution"] == "pending"
+    conn.close()
+
+
+def test_discovery_record_queries_preserve_service_entrypoint(tmp_path):
+    conn = init_db(tmp_path / "records.sqlite3")
+    assert get_discovery_run(conn, "missing") is None
+    run_id, page = repository.start_run(conn, "keyword", 3, None)
+    assert page == 1
+    listing = list_discovery_runs(conn)
+    assert listing["total"] == 1
+    assert listing["runs"][0]["id"] == run_id
+    assert list_discovery_runs(conn, offset=1)["runs"] == []
+    record = get_discovery_run(conn, run_id)
+    assert record["run"]["keyword"] == "keyword"
+    assert record["pages"] == record["entries"] == record["items"] == []
+    with pytest.raises(ValueError, match="cannot be resumed"):
+        repository.start_run(conn, "other-keyword", 3, run_id)
     conn.close()
