@@ -26,7 +26,7 @@ radar init-db
 pytest -q
 ```
 
-完整 Web 服务请使用上述源码安装方式，并保留仓库的 `web/` 目录；当前 wheel/sdist 不包含静态界面资源。Helper 接入的发布检查与上线条件见 [`docs/helper-cookie-release-check.md`](docs/helper-cookie-release-check.md)。
+正式上线采用固定提交的完整源码部署、独立虚拟环境及 systemd 管理，详见 [`docs/production-deployment-plan.md`](docs/production-deployment-plan.md)。完整 Web 服务请使用源码安装方式，并保留仓库的 `web/` 目录；当前 wheel/sdist 不包含静态界面资源。Helper 接入的发布检查与上线条件见 [`docs/helper-cookie-release-check.md`](docs/helper-cookie-release-check.md)。
 
 ## Web UI（前后端联调）
 

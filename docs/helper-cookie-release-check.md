@@ -21,6 +21,8 @@
 
 测试均使用 mock、已有 Chromium 和临时数据库。未使用真实 Cookie；未修改、上传或删除用户旧文件及业务数据库，未启动定期扫描。
 
+正式部署方式已确定为固定提交的完整源码部署，使用独立虚拟环境、systemd 和共享数据目录，详见 [正式部署方案](production-deployment-plan.md)。
+
 ## 上线前尚需完成
 
 当前进程没有配置 `RADAR_HELPER_BASE_URL`、`RADAR_HELPER_USERNAME`、`RADAR_HELPER_PASSWORD`、`RADAR_HELPER_ACCOUNT_ID`。因此本次不能验证真实服务登录、目标账号归属、完整快照及实际 Set-Cookie 回写；Helper production 源码具备接口不等于运行中的服务已部署该版本。
