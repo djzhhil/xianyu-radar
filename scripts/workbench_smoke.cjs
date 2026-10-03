@@ -60,6 +60,18 @@ uvicorn.run(create_app(),host="127.0.0.1",port=18766)
     assert.equal(common.pageSize, 20);
     assert.equal(common.invalidTime, 'not-a-date');
     assert.equal(common.unsafeLink, '—');
+    await page.click('#authPill');
+    assert.equal(await page.locator('#tab-auth').isVisible(), true);
+    await page.fill('#cookieInput', '{broken');
+    await page.click('#btnSaveCookie');
+    await page.waitForFunction(() => document.querySelector('#authResult').textContent.includes('JSON 解析失败'));
+    assert.equal(await page.locator('#btnSaveCookie').isEnabled(), true);
+    await page.route('**/api/auth/session', route => route.fulfill({ json: { looks_like_placeholder: true } }));
+    await page.fill('#cookieInput', '_m_h5_tk=test_123; other=test');
+    await page.click('#btnSaveCookie');
+    await page.waitForFunction(() => document.querySelector('#authResult').textContent.includes('已保存测试 Cookie'));
+    assert.equal(await page.locator('#cookieInput').inputValue(), '');
+    await page.unroute('**/api/auth/session');
     await page.click('[data-tab="pool"]');
     await page.fill('#addSellerForm [name="reference"]', 'https://www.goofish.com/personal?userId=12345');
     await page.fill('#addSellerForm [name="nickname"]', '测试商家');
